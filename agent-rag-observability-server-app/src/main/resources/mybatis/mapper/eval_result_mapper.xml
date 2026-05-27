@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="cn.chyuan.ai.observability.infrastructure.dao.mapper.EvalResultMapper">
+
+    <insert id="insert" parameterType="cn.chyuan.ai.observability.infrastructure.dao.po.EvalResultPO" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO eval_result (task_id, trace_id, query_text, standard_answer, actual_answer,
+                                recall_score, precision_score, f1_score, top3_hit_rate, answer_similarity,
+                                faithfulness_score, relevance_score, hallucination_flag, completeness_score,
+                                overall_score, eval_detail, create_time)
+        VALUES (#{taskId}, #{traceId}, #{queryText}, #{standardAnswer}, #{actualAnswer},
+                #{recallScore}, #{precisionScore}, #{f1Score}, #{top3HitRate}, #{answerSimilarity},
+                #{faithfulnessScore}, #{relevanceScore}, #{hallucinationFlag}, #{completenessScore},
+                #{overallScore}, #{evalDetail}, #{createTime})
+    </insert>
+
+    <insert id="batchInsert">
+        INSERT INTO eval_result (task_id, trace_id, query_text, standard_answer, actual_answer,
+                                recall_score, precision_score, f1_score, top3_hit_rate, answer_similarity,
+                                faithfulness_score, relevance_score, hallucination_flag, completeness_score,
+                                overall_score, eval_detail, create_time)
+        VALUES
+        <foreach collection="list" item="item" separator=",">
+            (#{item.taskId}, #{item.traceId}, #{item.queryText}, #{item.standardAnswer}, #{item.actualAnswer},
+             #{item.recallScore}, #{item.precisionScore}, #{item.f1Score}, #{item.top3HitRate}, #{item.answerSimilarity},
+             #{item.faithfulnessScore}, #{item.relevanceScore}, #{item.hallucinationFlag}, #{item.completenessScore},
+             #{item.overallScore}, #{item.evalDetail}, #{item.createTime})
+        </foreach>
+    </insert>
+
+    <select id="selectByTaskId" resultType="cn.chyuan.ai.observability.infrastructure.dao.po.EvalResultPO">
+        SELECT id, task_id, trace_id, query_text, standard_answer, actual_answer,
+               recall_score, precision_score, f1_score, top3_hit_rate, answer_similarity,
+               faithfulness_score, relevance_score, hallucination_flag, completeness_score,
+               overall_score, eval_detail, create_time
+        FROM eval_result WHERE task_id = #{taskId} ORDER BY create_time DESC LIMIT #{offset}, #{size}
+    </select>
+
+    <select id="countByTaskId" resultType="long">
+        SELECT COUNT(*) FROM eval_result WHERE task_id = #{taskId}
+    </select>
+
+</mapper>

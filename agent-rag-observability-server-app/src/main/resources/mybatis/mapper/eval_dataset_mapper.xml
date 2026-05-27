@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="cn.chyuan.ai.observability.infrastructure.dao.mapper.EvalDatasetMapper">
+
+    <insert id="insert" parameterType="cn.chyuan.ai.observability.infrastructure.dao.po.EvalDatasetPO" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO eval_dataset (dataset_id, dataset_name, description, item_count, items_json, create_time, update_time)
+        VALUES (#{datasetId}, #{datasetName}, #{description}, #{itemCount}, #{itemsJson}, #{createTime}, #{updateTime})
+    </insert>
+
+    <select id="selectByDatasetId" resultType="cn.chyuan.ai.observability.infrastructure.dao.po.EvalDatasetPO">
+        SELECT id, dataset_id, dataset_name, description, item_count, items_json, create_time, update_time
+        FROM eval_dataset WHERE dataset_id = #{datasetId}
+    </select>
+
+    <select id="selectList" resultType="cn.chyuan.ai.observability.infrastructure.dao.po.EvalDatasetPO">
+        SELECT id, dataset_id, dataset_name, description, item_count, create_time, update_time
+        FROM eval_dataset ORDER BY create_time DESC LIMIT #{offset}, #{size}
+    </select>
+
+</mapper>
