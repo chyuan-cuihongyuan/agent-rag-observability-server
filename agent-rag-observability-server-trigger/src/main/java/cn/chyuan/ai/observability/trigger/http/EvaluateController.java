@@ -11,6 +11,8 @@ import cn.chyuan.ai.observability.types.response.Response;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @Slf4j
@@ -52,6 +54,22 @@ public class EvaluateController {
         return Response.success(taskId);
     }
 
+    @GetMapping("/task/list")
+    public Response<Map<String, Object>> listTasks(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        List<EvalTaskEntity> tasks = evaluateService.queryTaskList(page, size);
+        List<EvalTaskDTO> dtoList = tasks.stream().map(entity -> EvalTaskDTO.builder()
+                .taskId(entity.getTaskId()).taskName(entity.getTaskName())
+                .evalType(entity.getEvalType()).datasetId(entity.getDatasetId())
+                .status(entity.getStatus()).modelVersion(entity.getModelVersion())
+                .ragStrategyVersion(entity.getRagStrategyVersion())
+                .avgOverallScore(entity.getAvgOverallScore())
+                .createTime(entity.getCreateTime()).updateTime(entity.getUpdateTime()).build()
+        ).toList();
+        return Response.success(Map.of("list", dtoList, "page", page, "size", size));
+    }
+
     @GetMapping("/task/{taskId}")
     public Response<EvalTaskDTO> queryTask(@PathVariable String taskId) {
         EvalTaskEntity entity = evaluateService.queryTask(taskId);
@@ -79,5 +97,27 @@ public class EvaluateController {
                 .overallScore(dto.getOverallScore()).evalDetail(dto.getEvalDetail()).build();
         evaluateService.saveResult(entity);
         return Response.success("ok");
+    }
+
+    @PostMapping("/task/{taskId}/run")
+    public Response<String> runTask(@PathVariable String taskId) {
+        evaluateService.runTask(taskId);
+        return Response.success(taskId);
+    }
+
+    @GetMapping("/result/{taskId}")
+    public Response<Map<String, Object>> queryResults(@PathVariable String taskId,
+                                                       @RequestParam(defaultValue = "1") int page,
+                                                       @RequestParam(defaultValue = "20") int size) {
+        List<EvalResultEntity> results = evaluateService.queryResultsByTaskId(taskId, page, size);
+        long total = evaluateService.countResultsByTaskId(taskId);
+        return Response.success(Map.of("list", results, "total", total, "page", page, "size", size));
+    }
+
+    @GetMapping("/result/compare")
+    public Response<List<Map<String, Object>>> compareResults(
+            @RequestParam String task1,
+            @RequestParam String task2) {
+        return Response.success(evaluateService.compareResults(task1, task2));
     }
 }

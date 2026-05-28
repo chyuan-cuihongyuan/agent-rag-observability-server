@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="cn.chyuan.ai.observability.infrastructure.dao.mapper.RagRetrievalLogMapper">
+    <insert id="insert" parameterType="cn.chyuan.ai.observability.infrastructure.dao.po.RagRetrievalLogPO">
+        INSERT INTO rag_retrieval_log (trace_id, source_service, tenant_id, owner_user_id, session_id,
+            agent_id, query_text, rewrite_text, retrieval_topk, retrieval_count, source_docs,
+            rerank_scores, empty_retrieval, retrieval_cost_ms, retrieval_stages,
+            rag_strategy_version, create_time)
+        VALUES (#{traceId}, #{sourceService}, #{tenantId}, #{ownerUserId}, #{sessionId},
+            #{agentId}, #{queryText}, #{rewriteText}, #{retrievalTopk}, #{retrievalCount}, #{sourceDocs},
+            #{rerankScores}, #{emptyRetrieval}, #{retrievalCostMs}, #{retrievalStages},
+            #{ragStrategyVersion}, #{createTime})
+    </insert>
+</mapper>

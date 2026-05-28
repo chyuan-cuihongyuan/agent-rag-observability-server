@@ -12,7 +12,7 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class ElasticsearchConfig {
 
-    @Value("${elasticsearch.host:localhost}")
+    @Value("${elasticsearch.host:49.232.169.33}")
     private String host;
 
     @Value("${elasticsearch.port:9200}")

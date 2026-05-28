@@ -1,0 +1,43 @@
+# Maven
+target/
+!.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+.mvn/
+mvnw
+mvnw.cmd
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.settings/
+.classpath
+.project
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Temp files
+*.tmp
+*.bak
+*.swp
+*~
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Docs
+README.md
+doc/
+
+# Docker
+Dockerfile
+.dockerignore
+docker-compose*.yml

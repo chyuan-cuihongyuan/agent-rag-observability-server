@@ -5,6 +5,8 @@ import cn.chyuan.ai.observability.domain.observe.model.entity.RagRetrievalEntity
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
 import co.elastic.clients.elasticsearch.core.SearchResponse;
 import co.elastic.clients.elasticsearch.core.search.Hit;
+import cn.chyuan.ai.observability.infrastructure.dao.repository.MysqlLogRepository;
+import cn.chyuan.ai.observability.infrastructure.metrics.ObserveMetrics;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Repository;
@@ -20,6 +22,12 @@ public class EsRagRetrievalRepository implements IRagRetrievalRepository {
     @Resource
     private ElasticsearchClient esClient;
 
+    @Resource
+    private MysqlLogRepository mysqlLogRepository;
+
+    @Resource
+    private ObserveMetrics observeMetrics;
+
     @Override
     public void save(RagRetrievalEntity entity) {
         try {
@@ -27,6 +35,13 @@ public class EsRagRetrievalRepository implements IRagRetrievalRepository {
             esClient.index(i -> i.index(indexName).id(entity.getTraceId()).document(entity));
         } catch (Exception e) {
             log.error("ES save rag retrieval error, traceId={}", entity.getTraceId(), e);
+        }
+        mysqlLogRepository.saveRetrievalLog(entity);
+        if (entity.getEmptyRetrieval() != null && entity.getEmptyRetrieval() == 1) {
+            observeMetrics.recordEmptyRetrieval();
+        }
+        if (entity.getRetrievalCostMs() != null) {
+            observeMetrics.recordRagRetrievalDuration(entity.getRetrievalCostMs());
         }
     }
 

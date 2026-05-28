@@ -6,9 +6,11 @@ import cn.chyuan.ai.observability.domain.observe.adapter.repository.IRagRetrieva
 import cn.chyuan.ai.observability.domain.observe.model.entity.AgentDecisionEntity;
 import cn.chyuan.ai.observability.domain.observe.model.entity.ChatResultEntity;
 import cn.chyuan.ai.observability.domain.observe.model.entity.RagRetrievalEntity;
+import org.springframework.stereotype.Service;
 
 import java.util.*;
 
+@Service
 public class ObserveQueryService {
 
     private final IAgentDecisionRepository agentDecisionRepository;

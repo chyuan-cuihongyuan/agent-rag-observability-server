@@ -6,10 +6,12 @@ import cn.chyuan.ai.observability.domain.observe.adapter.repository.IRagRetrieva
 import cn.chyuan.ai.observability.domain.observe.model.entity.AgentDecisionEntity;
 import cn.chyuan.ai.observability.domain.observe.model.entity.ChatResultEntity;
 import cn.chyuan.ai.observability.domain.observe.model.entity.RagRetrievalEntity;
+import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 
+@Service
 public class ObserveCollectService {
 
     private static final DateTimeFormatter FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");

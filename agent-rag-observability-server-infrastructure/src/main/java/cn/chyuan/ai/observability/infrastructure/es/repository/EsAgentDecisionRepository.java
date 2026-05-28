@@ -8,6 +8,8 @@ import co.elastic.clients.elasticsearch.core.IndexRequest;
 import co.elastic.clients.elasticsearch.core.SearchResponse;
 import co.elastic.clients.elasticsearch.core.search.Hit;
 import com.alibaba.fastjson.JSON;
+import cn.chyuan.ai.observability.infrastructure.dao.repository.MysqlLogRepository;
+import cn.chyuan.ai.observability.infrastructure.metrics.ObserveMetrics;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Repository;
@@ -25,6 +27,12 @@ public class EsAgentDecisionRepository implements IAgentDecisionRepository {
     @Resource
     private ElasticsearchClient esClient;
 
+    @Resource
+    private MysqlLogRepository mysqlLogRepository;
+
+    @Resource
+    private ObserveMetrics observeMetrics;
+
     @Override
     public void save(AgentDecisionEntity entity) {
         try {
@@ -32,6 +40,12 @@ public class EsAgentDecisionRepository implements IAgentDecisionRepository {
             esClient.index(i -> i.index(indexName).id(entity.getTraceId()).document(entity));
         } catch (Exception e) {
             log.error("ES save agent decision error, traceId={}", entity.getTraceId(), e);
+        }
+        mysqlLogRepository.saveDecisionLog(entity);
+        observeMetrics.recordRequest(entity.getSourceService(), entity.getAgentId(), entity.getBranchType());
+        observeMetrics.recordAgentStatus(entity.getAgentStatus());
+        if (entity.getCostTimeMs() != null) {
+            observeMetrics.recordRequestDuration(entity.getCostTimeMs());
         }
     }
 
@@ -127,7 +141,7 @@ public class EsAgentDecisionRepository implements IAgentDecisionRepository {
                     Void.class);
             List<Map<String, Object>> result = new ArrayList<>();
             response.aggregations().get("by_branch").sterms().buckets().array().forEach(b ->
-                    result.add(Map.of("branchType", b.key().stringValue(), "count", b.docCount())));
+                    result.add(Map.of("branch_type", b.key().stringValue(), "count", b.docCount())));
             return result;
         } catch (Exception e) {
             log.error("ES stat branch type error", e);

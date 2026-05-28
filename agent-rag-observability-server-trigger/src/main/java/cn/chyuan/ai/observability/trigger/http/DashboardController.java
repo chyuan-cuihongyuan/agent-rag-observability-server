@@ -2,7 +2,10 @@ package cn.chyuan.ai.observability.trigger.http;
 
 import cn.chyuan.ai.observability.api.dto.query.DashboardDTO;
 import cn.chyuan.ai.observability.domain.observe.service.DashboardService;
+import cn.chyuan.ai.observability.infrastructure.redis.DashboardCacheService;
 import cn.chyuan.ai.observability.types.response.Response;
+import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.TypeReference;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
@@ -20,13 +23,21 @@ public class DashboardController {
     private static final DateTimeFormatter FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     private final DashboardService dashboardService;
+    private final DashboardCacheService cacheService;
 
-    public DashboardController(DashboardService dashboardService) {
+    public DashboardController(DashboardService dashboardService, DashboardCacheService cacheService) {
         this.dashboardService = dashboardService;
+        this.cacheService = cacheService;
     }
 
     @GetMapping("/overview")
     public Response<DashboardDTO.Overview> overview(@RequestParam(defaultValue = "1") int days) {
+        String cacheKey = "overview:" + days;
+        String cached = cacheService.get(cacheKey);
+        if (cached != null) {
+            return Response.success(JSON.parseObject(cached, DashboardDTO.Overview.class));
+        }
+
         String endTime = LocalDateTime.now().format(FMT);
         String startTime = LocalDateTime.now().minusDays(days).format(FMT);
 
@@ -43,6 +54,8 @@ public class DashboardController {
                 .emptyRetrievalRate(Math.round(emptyRate * 100.0) / 100.0)
                 .failRate(Math.round((double) failCount / Math.max(total, 1) * 100 * 100.0) / 100.0)
                 .build();
+
+        cacheService.cache(cacheKey, JSON.toJSONString(overview));
         return Response.success(overview);
     }
 
@@ -50,23 +63,47 @@ public class DashboardController {
     public Response<List<Map<String, Object>>> trend(
             @RequestParam(defaultValue = "1") int days,
             @RequestParam(defaultValue = "hour") String interval) {
+        String cacheKey = "trend:" + days + ":" + interval;
+        String cached = cacheService.get(cacheKey);
+        if (cached != null) {
+            return Response.success(JSON.parseObject(cached, new TypeReference<List<Map<String, Object>>>() {}));
+        }
+
         String endTime = LocalDateTime.now().format(FMT);
         String startTime = LocalDateTime.now().minusDays(days).format(FMT);
-        return Response.success(dashboardService.getTrend(startTime, endTime, interval));
+        List<Map<String, Object>> result = dashboardService.getTrend(startTime, endTime, interval);
+        cacheService.cache(cacheKey, JSON.toJSONString(result));
+        return Response.success(result);
     }
 
     @GetMapping("/branch_distribution")
     public Response<List<Map<String, Object>>> branchDistribution(@RequestParam(defaultValue = "7") int days) {
+        String cacheKey = "branch:" + days;
+        String cached = cacheService.get(cacheKey);
+        if (cached != null) {
+            return Response.success(JSON.parseObject(cached, new TypeReference<List<Map<String, Object>>>() {}));
+        }
+
         String endTime = LocalDateTime.now().format(FMT);
         String startTime = LocalDateTime.now().minusDays(days).format(FMT);
-        return Response.success(dashboardService.getBranchDistribution(startTime, endTime));
+        List<Map<String, Object>> result = dashboardService.getBranchDistribution(startTime, endTime);
+        cacheService.cache(cacheKey, JSON.toJSONString(result));
+        return Response.success(result);
     }
 
     @GetMapping("/tool_usage")
     public Response<List<Map<String, Object>>> toolUsage(@RequestParam(defaultValue = "7") int days) {
+        String cacheKey = "tool:" + days;
+        String cached = cacheService.get(cacheKey);
+        if (cached != null) {
+            return Response.success(JSON.parseObject(cached, new TypeReference<List<Map<String, Object>>>() {}));
+        }
+
         String endTime = LocalDateTime.now().format(FMT);
         String startTime = LocalDateTime.now().minusDays(days).format(FMT);
-        return Response.success(dashboardService.getToolUsage(startTime, endTime));
+        List<Map<String, Object>> result = dashboardService.getToolUsage(startTime, endTime);
+        cacheService.cache(cacheKey, JSON.toJSONString(result));
+        return Response.success(result);
     }
 
     @GetMapping("/error_ranking")

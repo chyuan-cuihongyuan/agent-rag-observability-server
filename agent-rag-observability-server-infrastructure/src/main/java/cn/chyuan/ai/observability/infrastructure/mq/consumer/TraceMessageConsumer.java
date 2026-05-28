@@ -12,7 +12,7 @@ import org.apache.rocketmq.spring.core.RocketMQListener;
 import org.springframework.stereotype.Component;
 
 @Slf4j
-@Component
+// @Component  // Commented out - RocketMQ server not available
 @RocketMQMessageListener(topic = "observability-trace", consumerGroup = "observability-consumer-group")
 public class TraceMessageConsumer implements RocketMQListener<String> {
 
@@ -46,6 +46,10 @@ public class TraceMessageConsumer implements RocketMQListener<String> {
     private String extractTag(String message) {
         try {
             var obj = JSON.parseObject(message);
+            // Primary: explicit messageType field from producer
+            String type = obj.getString("messageType");
+            if (type != null && !type.isEmpty()) return type;
+            // Fallback: heuristic detection by unique fields
             if (obj.containsKey("intentType") || obj.containsKey("branchType")) return "decision";
             if (obj.containsKey("retrievalTopk") || obj.containsKey("retrievalCount")) return "retrieval";
             if (obj.containsKey("question") && obj.containsKey("answer")) return "chat_result";

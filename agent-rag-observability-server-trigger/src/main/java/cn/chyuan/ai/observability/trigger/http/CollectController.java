@@ -8,6 +8,7 @@ import cn.chyuan.ai.observability.domain.observe.model.entity.AgentDecisionEntit
 import cn.chyuan.ai.observability.domain.observe.model.entity.ChatResultEntity;
 import cn.chyuan.ai.observability.domain.observe.model.entity.RagRetrievalEntity;
 import cn.chyuan.ai.observability.domain.observe.service.ObserveCollectService;
+import cn.chyuan.ai.observability.infrastructure.redis.DashboardCacheService;
 import cn.chyuan.ai.observability.types.response.Response;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
@@ -19,14 +20,15 @@ import org.springframework.web.bind.annotation.*;
 public class CollectController {
 
     private final ObserveCollectService observeCollectService;
+    private final DashboardCacheService cacheService;
 
-    public CollectController(ObserveCollectService observeCollectService) {
+    public CollectController(ObserveCollectService observeCollectService, DashboardCacheService cacheService) {
         this.observeCollectService = observeCollectService;
+        this.cacheService = cacheService;
     }
 
     @PostMapping("/agent_decision")
-    public Response<String> collectAgentDecision(@RequestBody AgentDecisionDTO dto,
-                                                 @RequestHeader(value = "auth-key", defaultValue = "") String authKey) {
+    public Response<String> collectAgentDecision(@RequestBody AgentDecisionDTO dto) {
         AgentDecisionEntity entity = AgentDecisionEntity.builder()
                 .traceId(dto.getTraceId()).sourceService(dto.getSourceService())
                 .tenantId(dto.getTenantId()).ownerUserId(dto.getOwnerUserId())
@@ -39,12 +41,12 @@ public class CollectController {
                 .modelVersion(dto.getModelVersion()).errorMessage(dto.getErrorMessage())
                 .createTime(dto.getCreateTime()).build();
         observeCollectService.collectAgentDecision(entity);
+        cacheService.increment("agent_decision");
         return Response.success("ok");
     }
 
     @PostMapping("/rag_retrieval")
-    public Response<String> collectRagRetrieval(@RequestBody RagRetrievalDTO dto,
-                                                @RequestHeader(value = "auth-key", defaultValue = "") String authKey) {
+    public Response<String> collectRagRetrieval(@RequestBody RagRetrievalDTO dto) {
         RagRetrievalEntity entity = RagRetrievalEntity.builder()
                 .traceId(dto.getTraceId()).sourceService(dto.getSourceService())
                 .tenantId(dto.getTenantId()).ownerUserId(dto.getOwnerUserId())
@@ -56,12 +58,12 @@ public class CollectController {
                 .retrievalStages(dto.getRetrievalStages()).ragStrategyVersion(dto.getRagStrategyVersion())
                 .createTime(dto.getCreateTime()).build();
         observeCollectService.collectRagRetrieval(entity);
+        cacheService.increment("rag_retrieval");
         return Response.success("ok");
     }
 
     @PostMapping("/chat_result")
-    public Response<String> collectChatResult(@RequestBody ChatResultDTO dto,
-                                              @RequestHeader(value = "auth-key", defaultValue = "") String authKey) {
+    public Response<String> collectChatResult(@RequestBody ChatResultDTO dto) {
         ChatResultEntity entity = ChatResultEntity.builder()
                 .traceId(dto.getTraceId()).sourceService(dto.getSourceService())
                 .tenantId(dto.getTenantId()).ownerUserId(dto.getOwnerUserId())
@@ -71,12 +73,12 @@ public class CollectController {
                 .totalCostTimeMs(dto.getTotalCostTimeMs()).finalStatus(dto.getFinalStatus())
                 .modelVersion(dto.getModelVersion()).createTime(dto.getCreateTime()).build();
         observeCollectService.collectChatResult(entity);
+        cacheService.increment("chat_result");
         return Response.success("ok");
     }
 
     @PostMapping("/batch")
-    public Response<String> collectBatch(@RequestBody ObserveBatchDTO dto,
-                                         @RequestHeader(value = "auth-key", defaultValue = "") String authKey) {
+    public Response<String> collectBatch(@RequestBody ObserveBatchDTO dto) {
         if (dto.getAgentDecision() != null) {
             AgentDecisionDTO a = dto.getAgentDecision();
             observeCollectService.collectAgentDecision(AgentDecisionEntity.builder()
@@ -90,6 +92,7 @@ public class CollectController {
                     .agentStatus(a.getAgentStatus()).costTimeMs(a.getCostTimeMs())
                     .modelVersion(a.getModelVersion()).errorMessage(a.getErrorMessage())
                     .createTime(a.getCreateTime()).build());
+            cacheService.increment("agent_decision");
         }
         if (dto.getRagRetrieval() != null) {
             RagRetrievalDTO r = dto.getRagRetrieval();
@@ -103,6 +106,7 @@ public class CollectController {
                     .emptyRetrieval(r.getEmptyRetrieval()).retrievalCostMs(r.getRetrievalCostMs())
                     .retrievalStages(r.getRetrievalStages()).ragStrategyVersion(r.getRagStrategyVersion())
                     .createTime(r.getCreateTime()).build());
+            cacheService.increment("rag_retrieval");
         }
         if (dto.getChatResult() != null) {
             ChatResultDTO c = dto.getChatResult();
@@ -114,6 +118,7 @@ public class CollectController {
                     .promptTokens(c.getPromptTokens()).completionTokens(c.getCompletionTokens())
                     .totalCostTimeMs(c.getTotalCostTimeMs()).finalStatus(c.getFinalStatus())
                     .modelVersion(c.getModelVersion()).createTime(c.getCreateTime()).build());
+            cacheService.increment("chat_result");
         }
         return Response.success("ok");
     }

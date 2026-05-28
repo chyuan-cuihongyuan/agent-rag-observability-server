@@ -3,9 +3,11 @@ package cn.chyuan.ai.observability.domain.observe.service;
 import cn.chyuan.ai.observability.domain.observe.adapter.repository.IAgentDecisionRepository;
 import cn.chyuan.ai.observability.domain.observe.adapter.repository.IChatResultRepository;
 import cn.chyuan.ai.observability.domain.observe.adapter.repository.IRagRetrievalRepository;
+import org.springframework.stereotype.Service;
 
 import java.util.*;
 
+@Service
 public class DashboardService {
 
     private final IAgentDecisionRepository agentDecisionRepository;

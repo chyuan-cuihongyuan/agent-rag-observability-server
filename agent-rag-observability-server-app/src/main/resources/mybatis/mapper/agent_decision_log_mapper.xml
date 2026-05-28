@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="cn.chyuan.ai.observability.infrastructure.dao.mapper.AgentDecisionLogMapper">
+    <insert id="insert" parameterType="cn.chyuan.ai.observability.infrastructure.dao.po.AgentDecisionLogPO">
+        INSERT INTO agent_decision_log (trace_id, source_service, tenant_id, owner_user_id, session_id,
+            agent_id, user_query, intent_type, selected_tool_list, decision_reason, branch_type,
+            plan_steps, tool_call_times, tool_retry_times, agent_status, cost_time_ms,
+            model_version, error_message, create_time)
+        VALUES (#{traceId}, #{sourceService}, #{tenantId}, #{ownerUserId}, #{sessionId},
+            #{agentId}, #{userQuery}, #{intentType}, #{selectedToolList}, #{decisionReason}, #{branchType},
+            #{planSteps}, #{toolCallTimes}, #{toolRetryTimes}, #{agentStatus}, #{costTimeMs},
+            #{modelVersion}, #{errorMessage}, #{createTime})
+    </insert>
+</mapper>
