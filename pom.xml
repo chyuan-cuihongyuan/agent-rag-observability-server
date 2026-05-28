@@ -56,8 +56,8 @@
             </dependency>
             <!-- MySQL -->
             <dependency>
-                <groupId>com.mysql</groupId>
-                <artifactId>mysql-connector-j</artifactId>
+                <groupId>mysql</groupId>
+                <artifactId>mysql-connector-java</artifactId>
                 <version>8.0.33</version>
             </dependency>
             <!-- FastJSON -->
@@ -65,12 +65,6 @@
                 <groupId>com.alibaba</groupId>
                 <artifactId>fastjson</artifactId>
                 <version>2.0.28</version>
-            </dependency>
-            <!-- FastJSON2 -->
-            <dependency>
-                <groupId>com.alibaba.fastjson2</groupId>
-                <artifactId>fastjson2</artifactId>
-                <version>2.0.52</version>
             </dependency>
             <!-- Commons Lang3 -->
             <dependency>
