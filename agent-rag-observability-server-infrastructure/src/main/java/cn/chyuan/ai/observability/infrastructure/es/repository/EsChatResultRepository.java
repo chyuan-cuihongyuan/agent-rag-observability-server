@@ -6,6 +6,7 @@ import co.elastic.clients.elasticsearch.ElasticsearchClient;
 import co.elastic.clients.elasticsearch.core.SearchResponse;
 import co.elastic.clients.elasticsearch.core.search.Hit;
 import cn.chyuan.ai.observability.infrastructure.dao.repository.MysqlLogRepository;
+import cn.chyuan.ai.observability.infrastructure.es.bulk.EsBulkIndexService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Repository;
@@ -25,11 +26,14 @@ public class EsChatResultRepository implements IChatResultRepository {
     @Resource
     private MysqlLogRepository mysqlLogRepository;
 
+    @Resource
+    private EsBulkIndexService esBulkIndexService;
+
     @Override
     public void save(ChatResultEntity entity) {
         try {
             String indexName = INDEX_PREFIX + "-" + entity.getCreateTime().substring(0, 7).replace("-", ".");
-            esClient.index(i -> i.index(indexName).id(entity.getTraceId()).document(entity));
+            esBulkIndexService.index(indexName, entity.getTraceId(), entity);
         } catch (Exception e) {
             log.error("ES save chat result error, traceId={}", entity.getTraceId(), e);
         }

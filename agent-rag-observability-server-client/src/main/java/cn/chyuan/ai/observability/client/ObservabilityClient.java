@@ -72,7 +72,7 @@ public class ObservabilityClient {
             Span span = null;
             Scope scope = null;
             try {
-                String json = JSON.toJSONString(report);
+                String json = withMessageType(tag, report);
 
                 Tracer tracer = config.getOtel().isEnabled() ? getTracer() : null;
                 if (tracer != null) {
@@ -142,6 +142,16 @@ public class ObservabilityClient {
             return JSON.parseObject(json).getString("traceId");
         } catch (Exception e) {
             return "";
+        }
+    }
+
+    private String withMessageType(String tag, Object report) {
+        try {
+            com.alibaba.fastjson.JSONObject object = (com.alibaba.fastjson.JSONObject) JSON.toJSON(report);
+            object.put("messageType", tag);
+            return object.toJSONString();
+        } catch (Exception e) {
+            return JSON.toJSONString(report);
         }
     }
 }

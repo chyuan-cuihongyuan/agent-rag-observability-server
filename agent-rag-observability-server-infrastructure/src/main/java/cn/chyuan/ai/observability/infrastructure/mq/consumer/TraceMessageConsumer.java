@@ -9,10 +9,12 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
 import org.apache.rocketmq.spring.core.RocketMQListener;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 @Slf4j
-// @Component  // Commented out - RocketMQ server not available
+@Component
+@ConditionalOnProperty(prefix = "observability.mq.consumer", name = "enabled", havingValue = "true")
 @RocketMQMessageListener(topic = "observability-trace", consumerGroup = "observability-consumer-group")
 public class TraceMessageConsumer implements RocketMQListener<String> {
 

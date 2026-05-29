@@ -6,6 +6,7 @@ import co.elastic.clients.elasticsearch.ElasticsearchClient;
 import co.elastic.clients.elasticsearch.core.SearchResponse;
 import co.elastic.clients.elasticsearch.core.search.Hit;
 import cn.chyuan.ai.observability.infrastructure.dao.repository.MysqlLogRepository;
+import cn.chyuan.ai.observability.infrastructure.es.bulk.EsBulkIndexService;
 import cn.chyuan.ai.observability.infrastructure.metrics.ObserveMetrics;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -26,13 +27,16 @@ public class EsRagRetrievalRepository implements IRagRetrievalRepository {
     private MysqlLogRepository mysqlLogRepository;
 
     @Resource
+    private EsBulkIndexService esBulkIndexService;
+
+    @Resource
     private ObserveMetrics observeMetrics;
 
     @Override
     public void save(RagRetrievalEntity entity) {
         try {
             String indexName = INDEX_PREFIX + "-" + entity.getCreateTime().substring(0, 7).replace("-", ".");
-            esClient.index(i -> i.index(indexName).id(entity.getTraceId()).document(entity));
+            esBulkIndexService.index(indexName, entity.getTraceId(), entity);
         } catch (Exception e) {
             log.error("ES save rag retrieval error, traceId={}", entity.getTraceId(), e);
         }
