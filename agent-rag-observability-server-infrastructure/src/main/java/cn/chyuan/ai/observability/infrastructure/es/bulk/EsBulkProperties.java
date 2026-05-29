@@ -15,5 +15,7 @@ public class EsBulkProperties {
 
     private long flushIntervalMs = 1000;
 
+    private int retryTimes = 3;
+
     private int queueCapacity = 10000;
 }

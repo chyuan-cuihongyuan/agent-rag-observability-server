@@ -4,6 +4,8 @@ import cn.chyuan.ai.observability.api.dto.query.DashboardDTO;
 import cn.chyuan.ai.observability.domain.observe.service.DashboardService;
 import cn.chyuan.ai.observability.infrastructure.redis.DashboardCacheService;
 import cn.chyuan.ai.observability.types.response.Response;
+import cn.chyuan.ai.observability.types.response.ResponseCode;
+import cn.chyuan.ai.observability.trigger.http.support.RequestValidator;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.TypeReference;
 import lombok.extern.slf4j.Slf4j;
@@ -32,6 +34,11 @@ public class DashboardController {
 
     @GetMapping("/overview")
     public Response<DashboardDTO.Overview> overview(@RequestParam(defaultValue = "1") int days) {
+        String validationError = RequestValidator.validateDays(days);
+        if (validationError != null) {
+            return Response.fail(ResponseCode.ILLEGAL_PARAMETER, validationError);
+        }
+
         String cacheKey = "overview:" + days;
         String cached = cacheService.get(cacheKey);
         if (cached != null) {
@@ -63,6 +70,14 @@ public class DashboardController {
     public Response<List<Map<String, Object>>> trend(
             @RequestParam(defaultValue = "1") int days,
             @RequestParam(defaultValue = "hour") String interval) {
+        String validationError = RequestValidator.validateDays(days);
+        if (validationError == null) {
+            validationError = RequestValidator.validateDashboardInterval(interval);
+        }
+        if (validationError != null) {
+            return Response.fail(ResponseCode.ILLEGAL_PARAMETER, validationError);
+        }
+
         String cacheKey = "trend:" + days + ":" + interval;
         String cached = cacheService.get(cacheKey);
         if (cached != null) {
@@ -78,6 +93,11 @@ public class DashboardController {
 
     @GetMapping("/branch_distribution")
     public Response<List<Map<String, Object>>> branchDistribution(@RequestParam(defaultValue = "7") int days) {
+        String validationError = RequestValidator.validateDays(days);
+        if (validationError != null) {
+            return Response.fail(ResponseCode.ILLEGAL_PARAMETER, validationError);
+        }
+
         String cacheKey = "branch:" + days;
         String cached = cacheService.get(cacheKey);
         if (cached != null) {
@@ -93,6 +113,11 @@ public class DashboardController {
 
     @GetMapping("/tool_usage")
     public Response<List<Map<String, Object>>> toolUsage(@RequestParam(defaultValue = "7") int days) {
+        String validationError = RequestValidator.validateDays(days);
+        if (validationError != null) {
+            return Response.fail(ResponseCode.ILLEGAL_PARAMETER, validationError);
+        }
+
         String cacheKey = "tool:" + days;
         String cached = cacheService.get(cacheKey);
         if (cached != null) {
@@ -108,6 +133,11 @@ public class DashboardController {
 
     @GetMapping("/error_ranking")
     public Response<List<Map<String, Object>>> errorRanking(@RequestParam(defaultValue = "7") int days) {
+        String validationError = RequestValidator.validateDays(days);
+        if (validationError != null) {
+            return Response.fail(ResponseCode.ILLEGAL_PARAMETER, validationError);
+        }
+
         String endTime = LocalDateTime.now().format(FMT);
         String startTime = LocalDateTime.now().minusDays(days).format(FMT);
         return Response.success(dashboardService.getErrorRanking(startTime, endTime));

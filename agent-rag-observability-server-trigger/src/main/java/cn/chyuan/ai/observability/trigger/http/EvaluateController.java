@@ -8,6 +8,8 @@ import cn.chyuan.ai.observability.domain.evaluate.model.entity.EvalResultEntity;
 import cn.chyuan.ai.observability.domain.evaluate.model.entity.EvalTaskEntity;
 import cn.chyuan.ai.observability.domain.evaluate.service.EvaluateService;
 import cn.chyuan.ai.observability.types.response.Response;
+import cn.chyuan.ai.observability.types.response.ResponseCode;
+import cn.chyuan.ai.observability.trigger.http.support.RequestValidator;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
@@ -41,6 +43,10 @@ public class EvaluateController {
     public Response<Map<String, Object>> listDatasets(
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
+        String validationError = RequestValidator.validatePage(page, size);
+        if (validationError != null) {
+            return Response.fail(ResponseCode.ILLEGAL_PARAMETER, validationError);
+        }
         return Response.success(Map.of("list", evaluateService.queryDatasetList(page, size)));
     }
 
@@ -58,6 +64,10 @@ public class EvaluateController {
     public Response<Map<String, Object>> listTasks(
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
+        String validationError = RequestValidator.validatePage(page, size);
+        if (validationError != null) {
+            return Response.fail(ResponseCode.ILLEGAL_PARAMETER, validationError);
+        }
         List<EvalTaskEntity> tasks = evaluateService.queryTaskList(page, size);
         List<EvalTaskDTO> dtoList = tasks.stream().map(entity -> EvalTaskDTO.builder()
                 .taskId(entity.getTaskId()).taskName(entity.getTaskName())
@@ -72,6 +82,10 @@ public class EvaluateController {
 
     @GetMapping("/task/{taskId}")
     public Response<EvalTaskDTO> queryTask(@PathVariable String taskId) {
+        String validationError = RequestValidator.validateId("taskId", taskId);
+        if (validationError != null) {
+            return Response.fail(ResponseCode.ILLEGAL_PARAMETER, validationError);
+        }
         EvalTaskEntity entity = evaluateService.queryTask(taskId);
         if (entity == null) return Response.success(null);
         EvalTaskDTO dto = EvalTaskDTO.builder()
@@ -101,6 +115,10 @@ public class EvaluateController {
 
     @PostMapping("/task/{taskId}/run")
     public Response<String> runTask(@PathVariable String taskId) {
+        String validationError = RequestValidator.validateId("taskId", taskId);
+        if (validationError != null) {
+            return Response.fail(ResponseCode.ILLEGAL_PARAMETER, validationError);
+        }
         evaluateService.runTask(taskId);
         return Response.success(taskId);
     }
@@ -109,6 +127,13 @@ public class EvaluateController {
     public Response<Map<String, Object>> queryResults(@PathVariable String taskId,
                                                        @RequestParam(defaultValue = "1") int page,
                                                        @RequestParam(defaultValue = "20") int size) {
+        String validationError = RequestValidator.validateId("taskId", taskId);
+        if (validationError == null) {
+            validationError = RequestValidator.validatePage(page, size);
+        }
+        if (validationError != null) {
+            return Response.fail(ResponseCode.ILLEGAL_PARAMETER, validationError);
+        }
         List<EvalResultEntity> results = evaluateService.queryResultsByTaskId(taskId, page, size);
         long total = evaluateService.countResultsByTaskId(taskId);
         return Response.success(Map.of("list", results, "total", total, "page", page, "size", size));
@@ -118,6 +143,13 @@ public class EvaluateController {
     public Response<List<Map<String, Object>>> compareResults(
             @RequestParam String task1,
             @RequestParam String task2) {
+        String validationError = RequestValidator.validateId("task1", task1);
+        if (validationError == null) {
+            validationError = RequestValidator.validateId("task2", task2);
+        }
+        if (validationError != null) {
+            return Response.fail(ResponseCode.ILLEGAL_PARAMETER, validationError);
+        }
         return Response.success(evaluateService.compareResults(task1, task2));
     }
 }

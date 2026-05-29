@@ -15,7 +15,10 @@ import org.springframework.stereotype.Component;
 @Slf4j
 @Component
 @ConditionalOnProperty(prefix = "observability.mq.consumer", name = "enabled", havingValue = "true")
-@RocketMQMessageListener(topic = "observability-trace", consumerGroup = "observability-consumer-group")
+@RocketMQMessageListener(
+        topic = "${observability.mq.consumer.topic:observability-trace}",
+        consumerGroup = "${observability.mq.consumer.group:observability-consumer-group}"
+)
 public class TraceMessageConsumer implements RocketMQListener<String> {
 
     @Resource

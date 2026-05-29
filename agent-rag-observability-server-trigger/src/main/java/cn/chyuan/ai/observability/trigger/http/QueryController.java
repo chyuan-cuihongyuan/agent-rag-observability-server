@@ -7,6 +7,8 @@ import cn.chyuan.ai.observability.domain.observe.model.entity.ChatResultEntity;
 import cn.chyuan.ai.observability.domain.observe.model.entity.RagRetrievalEntity;
 import cn.chyuan.ai.observability.domain.observe.service.ObserveQueryService;
 import cn.chyuan.ai.observability.types.response.Response;
+import cn.chyuan.ai.observability.types.response.ResponseCode;
+import cn.chyuan.ai.observability.trigger.http.support.RequestValidator;
 import com.alibaba.fastjson.JSON;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
@@ -29,6 +31,11 @@ public class QueryController {
 
     @GetMapping("/trace/{traceId}")
     public Response<FullTraceDTO> queryTrace(@PathVariable String traceId) {
+        String validationError = RequestValidator.validateId("traceId", traceId);
+        if (validationError != null) {
+            return Response.fail(ResponseCode.ILLEGAL_PARAMETER, validationError);
+        }
+
         AgentDecisionEntity decision = observeQueryService.queryDecisionByTraceId(traceId);
         RagRetrievalEntity retrieval = observeQueryService.queryRetrievalByTraceId(traceId);
         ChatResultEntity chatResult = observeQueryService.queryChatResultByTraceId(traceId);
@@ -48,7 +55,16 @@ public class QueryController {
 
     @PostMapping("/trace/list")
     public Response<Map<String, Object>> queryTraceList(@RequestBody TraceQueryDTO queryDTO) {
+        if (queryDTO == null) {
+            return Response.fail(ResponseCode.ILLEGAL_PARAMETER, "查询参数不能为空");
+        }
+
         Map<String, Object> condition = new HashMap<>();
+        String validationError = validateTraceQuery(queryDTO);
+        if (validationError != null) {
+            return Response.fail(ResponseCode.ILLEGAL_PARAMETER, validationError);
+        }
+
         if (queryDTO.getTenantId() != null) condition.put("tenantId", queryDTO.getTenantId());
         if (queryDTO.getOwnerUserId() != null) condition.put("ownerUserId", queryDTO.getOwnerUserId());
         if (queryDTO.getSessionId() != null) condition.put("sessionId", queryDTO.getSessionId());
@@ -69,6 +85,13 @@ public class QueryController {
     public Response<List<AgentDecisionEntity>> queryBySession(@PathVariable String sessionId,
                                                               @RequestParam(defaultValue = "1") int page,
                                                               @RequestParam(defaultValue = "20") int size) {
+        String validationError = RequestValidator.validateId("sessionId", sessionId);
+        if (validationError == null) {
+            validationError = RequestValidator.validatePage(page, size);
+        }
+        if (validationError != null) {
+            return Response.fail(ResponseCode.ILLEGAL_PARAMETER, validationError);
+        }
         return Response.success(observeQueryService.queryBySessionId(sessionId, page, size));
     }
 
@@ -77,6 +100,29 @@ public class QueryController {
                                                            @RequestParam String tenantId,
                                                            @RequestParam(defaultValue = "1") int page,
                                                            @RequestParam(defaultValue = "20") int size) {
+        String validationError = RequestValidator.validateId("userId", userId);
+        if (validationError == null) {
+            validationError = RequestValidator.validateId("tenantId", tenantId);
+        }
+        if (validationError == null) {
+            validationError = RequestValidator.validatePage(page, size);
+        }
+        if (validationError != null) {
+            return Response.fail(ResponseCode.ILLEGAL_PARAMETER, validationError);
+        }
         return Response.success(observeQueryService.queryByUserId(tenantId, userId, page, size));
+    }
+
+    private String validateTraceQuery(TraceQueryDTO queryDTO) {
+        String validationError = RequestValidator.validateOptionalId("tenantId", queryDTO.getTenantId());
+        if (validationError == null) validationError = RequestValidator.validateOptionalId("ownerUserId", queryDTO.getOwnerUserId());
+        if (validationError == null) validationError = RequestValidator.validateOptionalId("sessionId", queryDTO.getSessionId());
+        if (validationError == null) validationError = RequestValidator.validateOptionalId("agentId", queryDTO.getAgentId());
+        if (validationError == null) validationError = RequestValidator.validateOptionalId("sourceService", queryDTO.getSourceService());
+        if (validationError == null) validationError = RequestValidator.validateTimeRange(queryDTO.getStartTime(), queryDTO.getEndTime());
+        int page = queryDTO.getPage() != null ? queryDTO.getPage() : 1;
+        int size = queryDTO.getSize() != null ? queryDTO.getSize() : 20;
+        if (validationError == null) validationError = RequestValidator.validatePage(page, size);
+        return validationError;
     }
 }

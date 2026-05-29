@@ -105,7 +105,17 @@ public class EsBulkIndexService {
         try {
             esClient.index(i -> i.index(indexName).id(id).document(document));
         } catch (Exception e) {
-            log.error("ES index failed: index={}, id={}", indexName, id, e);
+            int retryTimes = Math.max(properties.getRetryTimes(), 0);
+            for (int attempt = 1; attempt <= retryTimes; attempt++) {
+                try {
+                    esClient.index(i -> i.index(indexName).id(id).document(document));
+                    log.debug("ES index retry succeeded: index={}, id={}, attempt={}", indexName, id, attempt);
+                    return;
+                } catch (Exception retryException) {
+                    e = retryException;
+                }
+            }
+            log.error("ES index failed after retries: index={}, id={}, retryTimes={}", indexName, id, retryTimes, e);
         }
     }
 
