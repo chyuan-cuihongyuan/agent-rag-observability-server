@@ -1,0 +1,249 @@
+package cn.chyuan.ai.observability.trigger.http;
+
+import cn.chyuan.ai.observability.api.dto.evaluate.EvalDatasetDTO;
+import cn.chyuan.ai.observability.api.dto.evaluate.EvalResultDTO;
+import cn.chyuan.ai.observability.api.dto.evaluate.EvalTaskDTO;
+import cn.chyuan.ai.observability.domain.evaluate.model.entity.EvalDatasetEntity;
+import cn.chyuan.ai.observability.domain.evaluate.model.entity.EvalResultEntity;
+import cn.chyuan.ai.observability.domain.evaluate.model.entity.EvalTaskEntity;
+import cn.chyuan.ai.observability.domain.evaluate.service.EvaluateService;
+import cn.chyuan.ai.observability.types.response.Response;
+import cn.chyuan.ai.observability.types.response.ResponseCode;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
+
+/**
+ * 评测控制器单元测试
+ * <p>
+ * 测试场景：
+ * 1. 创建数据集
+ * 2. 查询数据集列表
+ * 3. 创建评测任务
+ * 4. 查询任务列表
+ * 5. 查询任务详情
+ * 6. 运行评测任务
+ * 7. 保存评测结果
+ * 8. 查询评测结果
+ * 9. 版本对比
+ * 10. 无效参数校验
+ */
+@ExtendWith(MockitoExtension.class)
+@DisplayName("评测控制器测试")
+public class EvaluateControllerTest {
+
+    @Mock
+    private EvaluateService evaluateService;
+
+    @InjectMocks
+    private EvaluateController controller;
+
+    @Test
+    @DisplayName("创建数据集 — 成功返回 datasetId")
+    public void testCreateDataset_Success() {
+        // 准备
+        EvalDatasetDTO dto = new EvalDatasetDTO();
+        dto.setDatasetId("ds-001");
+        dto.setDatasetName("测试数据集");
+        dto.setDescription("用于测试的数据集");
+        dto.setItemCount(10);
+        dto.setItemsJson("[{\"q\":\"问题1\",\"a\":\"答案1\"}]");
+
+        // 执行
+        Response<String> result = controller.createDataset(dto);
+
+        // 验证
+        assertEquals(ResponseCode.SUCCESS, result.getCode(), "响应码应为 0000");
+        assertEquals("ds-001", result.getData(), "应返回 datasetId");
+        verify(evaluateService).saveDataset(any(EvalDatasetEntity.class));
+    }
+
+    @Test
+    @DisplayName("查询数据集列表 — 成功返回分页列表")
+    public void testListDatasets_Success() {
+        // 准备
+        when(evaluateService.queryDatasetList(1, 20)).thenReturn(Collections.emptyList());
+
+        // 执行
+        Response<Map<String, Object>> result = controller.listDatasets(1, 20);
+
+        // 验证
+        assertEquals(ResponseCode.SUCCESS, result.getCode(), "响应码应为 0000");
+        assertNotNull(result.getData(), "数据不应为 null");
+        assertTrue(result.getData().containsKey("list"), "应包含 list 字段");
+    }
+
+    @Test
+    @DisplayName("查询数据集列表 — 无效分页参数返回错误")
+    public void testListDatasets_InvalidPage() {
+        // 执行
+        Response<Map<String, Object>> result = controller.listDatasets(-1, 20);
+
+        // 验证
+        assertEquals(ResponseCode.ILLEGAL_PARAMETER, result.getCode(), "响应码应为参数非法");
+    }
+
+    @Test
+    @DisplayName("创建评测任务 — 成功返回 taskId")
+    public void testCreateTask_Success() {
+        // 准备
+        EvalTaskDTO dto = new EvalTaskDTO();
+        dto.setTaskName("RAG 检索评测");
+        dto.setEvalType("RAG_RETRIEVAL");
+        dto.setDatasetId("ds-001");
+        dto.setModelVersion("deepseek-v4");
+        when(evaluateService.createTask(any(EvalTaskEntity.class))).thenReturn("task-001");
+
+        // 执行
+        Response<String> result = controller.createTask(dto);
+
+        // 验证
+        assertEquals(ResponseCode.SUCCESS, result.getCode(), "响应码应为 0000");
+        assertEquals("task-001", result.getData(), "应返回 taskId");
+    }
+
+    @Test
+    @DisplayName("查询任务列表 — 成功返回任务列表")
+    public void testListTasks_Success() {
+        // 准备
+        EvalTaskEntity entity = new EvalTaskEntity();
+        entity.setTaskId("task-001");
+        entity.setTaskName("测试任务");
+        entity.setEvalType("RAG_RETRIEVAL");
+        entity.setStatus("PENDING");
+        when(evaluateService.queryTaskList(1, 20)).thenReturn(List.of(entity));
+
+        // 执行
+        Response<Map<String, Object>> result = controller.listTasks(1, 20);
+
+        // 验证
+        assertEquals(ResponseCode.SUCCESS, result.getCode(), "响应码应为 0000");
+        assertNotNull(result.getData().get("list"), "应包含任务列表");
+    }
+
+    @Test
+    @DisplayName("查询任务详情 — 成功返回任务信息")
+    public void testQueryTask_Success() {
+        // 准备
+        EvalTaskEntity entity = new EvalTaskEntity();
+        entity.setTaskId("task-001");
+        entity.setTaskName("测试任务");
+        entity.setEvalType("RAG_RETRIEVAL");
+        entity.setStatus("COMPLETED");
+        entity.setAvgOverallScore(0.85);
+        when(evaluateService.queryTask("task-001")).thenReturn(entity);
+
+        // 执行
+        Response<EvalTaskDTO> result = controller.queryTask("task-001");
+
+        // 验证
+        assertEquals(ResponseCode.SUCCESS, result.getCode(), "响应码应为 0000");
+        assertNotNull(result.getData(), "数据不应为 null");
+        assertEquals("task-001", result.getData().getTaskId(), "taskId 应正确");
+        assertEquals("COMPLETED", result.getData().getStatus(), "状态应为 COMPLETED");
+    }
+
+    @Test
+    @DisplayName("查询任务详情 — 任务不存在返回 null")
+    public void testQueryTask_NotFound() {
+        // 准备
+        when(evaluateService.queryTask("non-exist")).thenReturn(null);
+
+        // 执行
+        Response<EvalTaskDTO> result = controller.queryTask("non-exist");
+
+        // 验证
+        assertEquals(ResponseCode.SUCCESS, result.getCode(), "响应码应为 0000");
+        assertNull(result.getData(), "不存在的任务应返回 null");
+    }
+
+    @Test
+    @DisplayName("运行评测任务 — 成功触发运行")
+    public void testRunTask_Success() {
+        // 执行
+        Response<String> result = controller.runTask("task-001");
+
+        // 验证
+        assertEquals(ResponseCode.SUCCESS, result.getCode(), "响应码应为 0000");
+        assertEquals("task-001", result.getData(), "应返回 taskId");
+        verify(evaluateService).runTask("task-001");
+    }
+
+    @Test
+    @DisplayName("保存评测结果 — 成功保存")
+    public void testSaveResult_Success() {
+        // 准备
+        EvalResultDTO dto = new EvalResultDTO();
+        dto.setTaskId("task-001");
+        dto.setTraceId("trace-001");
+        dto.setQueryText("测试问题");
+        dto.setStandardAnswer("标准答案");
+        dto.setActualAnswer("实际答案");
+        dto.setRecallScore(0.9);
+        dto.setPrecisionScore(0.85);
+        dto.setF1Score(0.87);
+        dto.setOverallScore(0.88);
+
+        // 执行
+        Response<String> result = controller.saveResult(dto);
+
+        // 验证
+        assertEquals(ResponseCode.SUCCESS, result.getCode(), "响应码应为 0000");
+        assertEquals("ok", result.getData(), "应返回 ok");
+        verify(evaluateService).saveResult(any(EvalResultEntity.class));
+    }
+
+    @Test
+    @DisplayName("查询评测结果 — 成功返回结果列表")
+    public void testQueryResults_Success() {
+        // 准备
+        when(evaluateService.queryResultsByTaskId("task-001", 1, 20))
+                .thenReturn(Collections.emptyList());
+        when(evaluateService.countResultsByTaskId("task-001")).thenReturn(0L);
+
+        // 执行
+        Response<Map<String, Object>> result = controller.queryResults("task-001", 1, 20);
+
+        // 验证
+        assertEquals(ResponseCode.SUCCESS, result.getCode(), "响应码应为 0000");
+        assertTrue(result.getData().containsKey("list"), "应包含 list");
+        assertTrue(result.getData().containsKey("total"), "应包含 total");
+    }
+
+    @Test
+    @DisplayName("版本对比 — 成功返回对比数据")
+    public void testCompareResults_Success() {
+        // 准备
+        when(evaluateService.compareResults("task-001", "task-002"))
+                .thenReturn(List.of(Map.of("metric", "recall", "task1", 0.9, "task2", 0.85)));
+
+        // 执行
+        Response<List<Map<String, Object>>> result = controller.compareResults("task-001", "task-002");
+
+        // 验证
+        assertEquals(ResponseCode.SUCCESS, result.getCode(), "响应码应为 0000");
+        assertNotNull(result.getData(), "对比数据不应为 null");
+        assertEquals(1, result.getData().size(), "应有 1 条对比记录");
+    }
+
+    @Test
+    @DisplayName("版本对比 — 无效 taskId 返回参数错误")
+    public void testCompareResults_InvalidTaskId() {
+        // 执行
+        Response<List<Map<String, Object>>> result = controller.compareResults("", "task-002");
+
+        // 验证
+        assertEquals(ResponseCode.ILLEGAL_PARAMETER, result.getCode(), "响应码应为参数非法");
+    }
+}
