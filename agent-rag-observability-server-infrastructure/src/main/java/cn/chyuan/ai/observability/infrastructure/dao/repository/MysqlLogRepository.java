@@ -13,9 +13,14 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+
 @Slf4j
 @Repository
 public class MysqlLogRepository {
+
+    private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     @Resource
     private AgentDecisionLogMapper agentDecisionLogMapper;
@@ -29,16 +34,16 @@ public class MysqlLogRepository {
     public void saveDecisionLog(AgentDecisionEntity entity) {
         try {
             agentDecisionLogMapper.insert(AgentDecisionLogPO.builder()
-                    .traceId(entity.getTraceId()).sourceService(entity.getSourceService())
-                    .tenantId(entity.getTenantId()).ownerUserId(entity.getOwnerUserId())
-                    .sessionId(entity.getSessionId()).agentId(entity.getAgentId())
-                    .userQuery(entity.getUserQuery()).intentType(entity.getIntentType())
+                    .traceId(text(entity.getTraceId())).sourceService(text(entity.getSourceService()))
+                    .tenantId(text(entity.getTenantId())).ownerUserId(text(entity.getOwnerUserId()))
+                    .sessionId(text(entity.getSessionId())).agentId(text(entity.getAgentId()))
+                    .userQuery(text(entity.getUserQuery())).intentType(text(entity.getIntentType()))
                     .selectedToolList(entity.getSelectedToolList()).decisionReason(entity.getDecisionReason())
-                    .branchType(entity.getBranchType()).planSteps(entity.getPlanSteps())
-                    .toolCallTimes(entity.getToolCallTimes()).toolRetryTimes(entity.getToolRetryTimes())
-                    .agentStatus(entity.getAgentStatus()).costTimeMs(entity.getCostTimeMs())
-                    .modelVersion(entity.getModelVersion()).errorMessage(entity.getErrorMessage())
-                    .createTime(entity.getCreateTime()).build());
+                    .branchType(text(entity.getBranchType())).planSteps(entity.getPlanSteps())
+                    .toolCallTimes(number(entity.getToolCallTimes())).toolRetryTimes(number(entity.getToolRetryTimes()))
+                    .agentStatus(text(entity.getAgentStatus())).costTimeMs(number(entity.getCostTimeMs()))
+                    .modelVersion(text(entity.getModelVersion())).errorMessage(entity.getErrorMessage())
+                    .createTime(createTime(entity.getCreateTime())).build());
         } catch (Exception e) {
             log.debug("MySQL save decision log error: {}", e.getMessage());
         }
@@ -47,15 +52,15 @@ public class MysqlLogRepository {
     public void saveRetrievalLog(RagRetrievalEntity entity) {
         try {
             ragRetrievalLogMapper.insert(RagRetrievalLogPO.builder()
-                    .traceId(entity.getTraceId()).sourceService(entity.getSourceService())
-                    .tenantId(entity.getTenantId()).ownerUserId(entity.getOwnerUserId())
-                    .sessionId(entity.getSessionId()).agentId(entity.getAgentId())
-                    .queryText(entity.getQueryText()).rewriteText(entity.getRewriteText())
-                    .retrievalTopk(entity.getRetrievalTopk()).retrievalCount(entity.getRetrievalCount())
+                    .traceId(text(entity.getTraceId())).sourceService(text(entity.getSourceService()))
+                    .tenantId(text(entity.getTenantId())).ownerUserId(text(entity.getOwnerUserId()))
+                    .sessionId(text(entity.getSessionId())).agentId(text(entity.getAgentId()))
+                    .queryText(text(entity.getQueryText())).rewriteText(entity.getRewriteText())
+                    .retrievalTopk(number(entity.getRetrievalTopk())).retrievalCount(number(entity.getRetrievalCount()))
                     .sourceDocs(entity.getSourceDocs()).rerankScores(entity.getRerankScores())
-                    .emptyRetrieval(entity.getEmptyRetrieval()).retrievalCostMs(entity.getRetrievalCostMs())
-                    .retrievalStages(entity.getRetrievalStages()).ragStrategyVersion(entity.getRagStrategyVersion())
-                    .createTime(entity.getCreateTime()).build());
+                    .emptyRetrieval(number(entity.getEmptyRetrieval())).retrievalCostMs(entity.getRetrievalCostMs())
+                    .retrievalStages(entity.getRetrievalStages()).ragStrategyVersion(text(entity.getRagStrategyVersion()))
+                    .createTime(createTime(entity.getCreateTime())).build());
         } catch (Exception e) {
             log.debug("MySQL save retrieval log error: {}", e.getMessage());
         }
@@ -64,15 +69,27 @@ public class MysqlLogRepository {
     public void saveChatResultLog(ChatResultEntity entity) {
         try {
             chatResultLogMapper.insert(ChatResultLogPO.builder()
-                    .traceId(entity.getTraceId()).sourceService(entity.getSourceService())
-                    .tenantId(entity.getTenantId()).ownerUserId(entity.getOwnerUserId())
-                    .sessionId(entity.getSessionId()).agentId(entity.getAgentId())
-                    .question(entity.getQuestion()).answer(entity.getAnswer())
-                    .promptTokens(entity.getPromptTokens()).completionTokens(entity.getCompletionTokens())
-                    .totalCostTimeMs(entity.getTotalCostTimeMs()).finalStatus(entity.getFinalStatus())
-                    .modelVersion(entity.getModelVersion()).createTime(entity.getCreateTime()).build());
+                    .traceId(text(entity.getTraceId())).sourceService(text(entity.getSourceService()))
+                    .tenantId(text(entity.getTenantId())).ownerUserId(text(entity.getOwnerUserId()))
+                    .sessionId(text(entity.getSessionId())).agentId(text(entity.getAgentId()))
+                    .question(text(entity.getQuestion())).answer(text(entity.getAnswer()))
+                    .promptTokens(number(entity.getPromptTokens())).completionTokens(number(entity.getCompletionTokens()))
+                    .totalCostTimeMs(number(entity.getTotalCostTimeMs())).finalStatus(text(entity.getFinalStatus()))
+                    .modelVersion(text(entity.getModelVersion())).createTime(createTime(entity.getCreateTime())).build());
         } catch (Exception e) {
             log.debug("MySQL save chat result log error: {}", e.getMessage());
         }
+    }
+
+    private static String text(String value) {
+        return value == null ? "" : value;
+    }
+
+    private static Integer number(Integer value) {
+        return value == null ? 0 : value;
+    }
+
+    private static String createTime(String value) {
+        return value == null || value.isBlank() ? LocalDateTime.now().format(DATE_TIME_FORMATTER) : value;
     }
 }
