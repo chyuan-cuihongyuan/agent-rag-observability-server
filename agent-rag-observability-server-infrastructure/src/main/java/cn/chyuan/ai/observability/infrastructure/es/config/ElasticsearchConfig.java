@@ -18,19 +18,19 @@ import org.springframework.util.StringUtils;
 @Configuration
 public class ElasticsearchConfig {
 
-    @Value("${elasticsearch.host:49.232.169.33}")
+    @Value("${elasticsearch.host}")
     private String host;
 
-    @Value("${elasticsearch.port:9200}")
+    @Value("${elasticsearch.port}")
     private int port;
 
-    @Value("${elasticsearch.scheme:http}")
+    @Value("${elasticsearch.scheme}")
     private String scheme;
 
-    @Value("${elasticsearch.username:}")
+    @Value("${elasticsearch.username}")
     private String username;
 
-    @Value("${elasticsearch.password:}")
+    @Value("${elasticsearch.password}")
     private String password;
 
     @Bean

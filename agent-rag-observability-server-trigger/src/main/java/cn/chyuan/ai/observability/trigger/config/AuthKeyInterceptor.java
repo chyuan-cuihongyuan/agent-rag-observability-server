@@ -12,7 +12,7 @@ import jakarta.servlet.http.HttpServletResponse;
 @Component
 public class AuthKeyInterceptor implements HandlerInterceptor {
 
-    @Value("${observability.auth-key:}")
+    @Value("${observability.auth-key}")
     private String expectedAuthKey;
 
     @Override
