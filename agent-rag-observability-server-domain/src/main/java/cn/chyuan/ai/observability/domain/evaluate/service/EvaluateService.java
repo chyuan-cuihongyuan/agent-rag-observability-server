@@ -10,7 +10,6 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -92,30 +91,57 @@ public class EvaluateService {
         evalTaskRepository.updateStatus(taskId, "RUNNING");
     }
 
-    private Map<String, Object> buildCompareMap(String taskId, double avgScore, double avgRecall, double avgFaith, int count) {
+    public List<Map<String, Object>> compareResults(String task1, String task2) {
+        return List.of(
+                buildCompareMap(task1, computeTaskAverages(task1)),
+                buildCompareMap(task2, computeTaskAverages(task2))
+        );
+    }
+
+    /**
+     * 分页查询全部结果并计算平均值，避免硬编码只取前 100 条
+     */
+    private TaskAverages computeTaskAverages(String taskId) {
+        double sumOverall = 0, sumRecall = 0, sumFaith = 0;
+        int count = 0;
+        int page = 1;
+        int pageSize = 500;
+        List<EvalResultEntity> batch;
+
+        do {
+            batch = evalResultRepository.queryByTaskId(taskId, page, pageSize);
+            for (EvalResultEntity r : batch) {
+                sumOverall += (r.getOverallScore() != null ? r.getOverallScore() : 0);
+                sumRecall += (r.getRecallScore() != null ? r.getRecallScore() : 0);
+                sumFaith += (r.getFaithfulnessScore() != null ? r.getFaithfulnessScore() : 0);
+                count++;
+            }
+            page++;
+        } while (batch.size() == pageSize); // 批次未满说明已读完
+
+        TaskAverages avg = new TaskAverages();
+        avg.avgOverall = count > 0 ? sumOverall / count : 0;
+        avg.avgRecall = count > 0 ? sumRecall / count : 0;
+        avg.avgFaith = count > 0 ? sumFaith / count : 0;
+        avg.count = count;
+        return avg;
+    }
+
+    private Map<String, Object> buildCompareMap(String taskId, TaskAverages avg) {
         Map<String, Object> map = new HashMap<>();
         map.put("taskId", taskId);
-        map.put("avgOverallScore", avgScore);
-        map.put("avgRecallScore", avgRecall);
-        map.put("avgFaithfulnessScore", avgFaith);
-        map.put("count", count);
+        map.put("avgOverallScore", avg.avgOverall);
+        map.put("avgRecallScore", avg.avgRecall);
+        map.put("avgFaithfulnessScore", avg.avgFaith);
+        map.put("count", avg.count);
         return map;
     }
 
-    public List<Map<String, Object>> compareResults(String task1, String task2) {
-        List<EvalResultEntity> results1 = evalResultRepository.queryByTaskId(task1, 1, 100);
-        List<EvalResultEntity> results2 = evalResultRepository.queryByTaskId(task2, 1, 100);
-
-        double avgScore1 = results1.stream().mapToDouble(r -> r.getOverallScore() != null ? r.getOverallScore() : 0).average().orElse(0);
-        double avgScore2 = results2.stream().mapToDouble(r -> r.getOverallScore() != null ? r.getOverallScore() : 0).average().orElse(0);
-        double avgRecall1 = results1.stream().mapToDouble(r -> r.getRecallScore() != null ? r.getRecallScore() : 0).average().orElse(0);
-        double avgRecall2 = results2.stream().mapToDouble(r -> r.getRecallScore() != null ? r.getRecallScore() : 0).average().orElse(0);
-        double avgFaith1 = results1.stream().mapToDouble(r -> r.getFaithfulnessScore() != null ? r.getFaithfulnessScore() : 0).average().orElse(0);
-        double avgFaith2 = results2.stream().mapToDouble(r -> r.getFaithfulnessScore() != null ? r.getFaithfulnessScore() : 0).average().orElse(0);
-
-        List<Map<String, Object>> comparison = new ArrayList<>();
-        comparison.add(buildCompareMap(task1, avgScore1, avgRecall1, avgFaith1, results1.size()));
-        comparison.add(buildCompareMap(task2, avgScore2, avgRecall2, avgFaith2, results2.size()));
-        return comparison;
+    /** 内部聚合结果 */
+    private static class TaskAverages {
+        double avgOverall;
+        double avgRecall;
+        double avgFaith;
+        int count;
     }
 }

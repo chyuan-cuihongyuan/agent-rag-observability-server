@@ -9,6 +9,7 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
 import org.apache.rocketmq.spring.core.RocketMQListener;
+import org.slf4j.MDC;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
@@ -21,13 +22,20 @@ import org.springframework.stereotype.Component;
 )
 public class TraceMessageConsumer implements RocketMQListener<String> {
 
+    private static final String MDC_TRACE_ID = "traceId";
+
     @Resource
     private ObserveCollectService observeCollectService;
 
     @Override
     public void onMessage(String message) {
+        String tag = extractTag(message);
+        // 提取业务 traceId 写入 MDC，便于日志关联追踪
+        String traceId = extractTraceId(message);
+        if (traceId != null && !traceId.isEmpty()) {
+            MDC.put(MDC_TRACE_ID, traceId);
+        }
         try {
-            String tag = extractTag(message);
             switch (tag) {
                 case "decision" -> {
                     AgentDecisionEntity entity = JSON.parseObject(message, AgentDecisionEntity.class);
@@ -44,7 +52,11 @@ public class TraceMessageConsumer implements RocketMQListener<String> {
                 default -> log.warn("unknown trace message type: {}", tag);
             }
         } catch (Exception e) {
-            log.error("consume trace message error", e);
+            log.error("consume trace message error, tag={}, traceId={}", tag, traceId, e);
+            // 上抛异常让 RocketMQ 感知消费失败，触发重试，超限后进入死信队列
+            throw new RuntimeException(e);
+        } finally {
+            MDC.remove(MDC_TRACE_ID);
         }
     }
 
@@ -60,5 +72,13 @@ public class TraceMessageConsumer implements RocketMQListener<String> {
             if (obj.containsKey("question") && obj.containsKey("answer")) return "chat_result";
         } catch (Exception ignored) {}
         return "unknown";
+    }
+
+    private String extractTraceId(String message) {
+        try {
+            return JSON.parseObject(message).getString("traceId");
+        } catch (Exception e) {
+            return "";
+        }
     }
 }

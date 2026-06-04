@@ -12,13 +12,16 @@ import jakarta.servlet.http.HttpServletResponse;
 @Component
 public class AuthKeyInterceptor implements HandlerInterceptor {
 
-    @Value("${observability.auth-key}")
+    @Value("${observability.auth-key:}")
     private String expectedAuthKey;
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
-        if (expectedAuthKey.isEmpty()) {
-            return true;
+        // auth-key 为空时拒绝请求（dev 环境通过 application-dev.yml 显式设置放行值）
+        if (expectedAuthKey == null || expectedAuthKey.isEmpty()) {
+            log.warn("auth-key 未配置，拒绝请求, uri={}, remote={}", request.getRequestURI(), request.getRemoteAddr());
+            response.setStatus(401);
+            return false;
         }
 
         String authKey = request.getHeader("auth-key");

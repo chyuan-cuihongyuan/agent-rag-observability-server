@@ -39,6 +39,7 @@ public class EsRagRetrievalRepository implements IRagRetrievalRepository {
             esBulkIndexService.index(indexName, entity.getTraceId(), entity);
         } catch (Exception e) {
             log.error("ES save rag retrieval error, traceId={}", entity.getTraceId(), e);
+            observeMetrics.recordWriteFailure("es");
         }
         mysqlLogRepository.saveRetrievalLog(entity);
         if (entity.getEmptyRetrieval() != null && entity.getEmptyRetrieval() == 1) {

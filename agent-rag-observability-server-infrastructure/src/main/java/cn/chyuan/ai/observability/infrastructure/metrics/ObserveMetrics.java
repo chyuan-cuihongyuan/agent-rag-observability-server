@@ -55,4 +55,13 @@ public class ObserveMetrics {
         Timer.builder("observe_rag_retrieval_duration")
                 .register(meterRegistry).record(durationMs, TimeUnit.MILLISECONDS);
     }
+
+    /**
+     * 记录写入失败（ES / MySQL / 线程池拒绝等）
+     */
+    public void recordWriteFailure(String store) {
+        Counter.builder("observe_write_fail_total")
+                .tag("store", store)
+                .register(meterRegistry).increment();
+    }
 }

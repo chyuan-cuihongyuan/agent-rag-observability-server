@@ -8,23 +8,20 @@ import cn.chyuan.ai.observability.domain.observe.model.entity.AgentDecisionEntit
 import cn.chyuan.ai.observability.domain.observe.model.entity.ChatResultEntity;
 import cn.chyuan.ai.observability.domain.observe.model.entity.RagRetrievalEntity;
 import cn.chyuan.ai.observability.domain.observe.service.ObserveCollectService;
-import cn.chyuan.ai.observability.infrastructure.redis.DashboardCacheService;
 import cn.chyuan.ai.observability.types.response.Response;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
 @Slf4j
 @RestController
-@CrossOrigin("*")
+@CrossOrigin(origins = {"http://localhost:3001", "http://localhost:3000"})
 @RequestMapping("/api/v1/collect")
 public class CollectController {
 
     private final ObserveCollectService observeCollectService;
-    private final DashboardCacheService cacheService;
 
-    public CollectController(ObserveCollectService observeCollectService, DashboardCacheService cacheService) {
+    public CollectController(ObserveCollectService observeCollectService) {
         this.observeCollectService = observeCollectService;
-        this.cacheService = cacheService;
     }
 
     @PostMapping("/agent_decision")
@@ -41,7 +38,6 @@ public class CollectController {
                 .modelVersion(dto.getModelVersion()).errorMessage(dto.getErrorMessage())
                 .createTime(dto.getCreateTime()).build();
         observeCollectService.collectAgentDecision(entity);
-        cacheService.increment("agent_decision");
         return Response.success("ok");
     }
 
@@ -58,7 +54,6 @@ public class CollectController {
                 .retrievalStages(dto.getRetrievalStages()).ragStrategyVersion(dto.getRagStrategyVersion())
                 .createTime(dto.getCreateTime()).build();
         observeCollectService.collectRagRetrieval(entity);
-        cacheService.increment("rag_retrieval");
         return Response.success("ok");
     }
 
@@ -73,7 +68,6 @@ public class CollectController {
                 .totalCostTimeMs(dto.getTotalCostTimeMs()).finalStatus(dto.getFinalStatus())
                 .modelVersion(dto.getModelVersion()).createTime(dto.getCreateTime()).build();
         observeCollectService.collectChatResult(entity);
-        cacheService.increment("chat_result");
         return Response.success("ok");
     }
 
@@ -92,7 +86,6 @@ public class CollectController {
                     .agentStatus(a.getAgentStatus()).costTimeMs(a.getCostTimeMs())
                     .modelVersion(a.getModelVersion()).errorMessage(a.getErrorMessage())
                     .createTime(a.getCreateTime()).build());
-            cacheService.increment("agent_decision");
         }
         if (dto.getRagRetrieval() != null) {
             RagRetrievalDTO r = dto.getRagRetrieval();
@@ -106,7 +99,6 @@ public class CollectController {
                     .emptyRetrieval(r.getEmptyRetrieval()).retrievalCostMs(r.getRetrievalCostMs())
                     .retrievalStages(r.getRetrievalStages()).ragStrategyVersion(r.getRagStrategyVersion())
                     .createTime(r.getCreateTime()).build());
-            cacheService.increment("rag_retrieval");
         }
         if (dto.getChatResult() != null) {
             ChatResultDTO c = dto.getChatResult();
@@ -118,7 +110,6 @@ public class CollectController {
                     .promptTokens(c.getPromptTokens()).completionTokens(c.getCompletionTokens())
                     .totalCostTimeMs(c.getTotalCostTimeMs()).finalStatus(c.getFinalStatus())
                     .modelVersion(c.getModelVersion()).createTime(c.getCreateTime()).build());
-            cacheService.increment("chat_result");
         }
         return Response.success("ok");
     }

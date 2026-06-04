@@ -7,7 +7,6 @@ import co.elastic.clients.elasticsearch._types.query_dsl.Query;
 import co.elastic.clients.elasticsearch.core.IndexRequest;
 import co.elastic.clients.elasticsearch.core.SearchResponse;
 import co.elastic.clients.elasticsearch.core.search.Hit;
-import com.alibaba.fastjson.JSON;
 import cn.chyuan.ai.observability.infrastructure.dao.repository.MysqlLogRepository;
 import cn.chyuan.ai.observability.infrastructure.es.bulk.EsBulkIndexService;
 import cn.chyuan.ai.observability.infrastructure.metrics.ObserveMetrics;
@@ -15,6 +14,8 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Repository;
 
+import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONArray;
 import java.io.StringReader;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -44,6 +45,7 @@ public class EsAgentDecisionRepository implements IAgentDecisionRepository {
             esBulkIndexService.index(indexName, entity.getTraceId(), entity);
         } catch (Exception e) {
             log.error("ES save agent decision error, traceId={}", entity.getTraceId(), e);
+            observeMetrics.recordWriteFailure("es");
         }
         mysqlLogRepository.saveDecisionLog(entity);
         observeMetrics.recordRequest(entity.getSourceService(), entity.getAgentId(), entity.getBranchType());
@@ -155,8 +157,61 @@ public class EsAgentDecisionRepository implements IAgentDecisionRepository {
 
     @Override
     public List<Map<String, Object>> statByToolUsage(String startTime, String endTime) {
-        // Simplified: return status stats for now
-        return statByStatus(startTime, endTime);
+        try {
+            // selectedToolList 是 object 类型，无法直接 ES terms 聚合
+            // 从 ES 查询最近 500 条记录的 selectedToolList 字段，应用层解析计数
+            SearchResponse<Map> response = esClient.search(s -> s
+                    .index(INDEX_PREFIX + "*")
+                    .size(500)
+                    .source(src -> src.filter(f -> f.includes("selectedToolList")))
+                    .query(q -> q.range(r -> r.field("createTime")
+                            .gte(co.elastic.clients.json.JsonData.of(startTime))
+                            .lte(co.elastic.clients.json.JsonData.of(endTime)))),
+                    Map.class);
+
+            // 应用层解析 selectedToolList JSON 字符串，计数工具使用频率
+            Map<String, Long> toolCountMap = new HashMap<>();
+            for (Hit<Map> hit : response.hits().hits()) {
+                Map source = hit.source();
+                if (source == null) continue;
+                Object toolListObj = source.get("selectedToolList");
+                if (toolListObj == null) continue;
+
+                // selectedToolList 可能是 JSON 字符串或已解析的对象
+                if (toolListObj instanceof String toolListStr && !toolListStr.isBlank()) {
+                    try {
+                        JSONArray tools = JSON.parseArray(toolListStr);
+                        for (int i = 0; i < tools.size(); i++) {
+                            String toolName = tools.getString(i);
+                            if (toolName != null && !toolName.isBlank()) {
+                                toolCountMap.merge(toolName, 1L, Long::sum);
+                            }
+                        }
+                    } catch (Exception ignored) {
+                        // 非 JSON 数组格式，跳过
+                    }
+                } else if (toolListObj instanceof List<?> tools) {
+                    for (Object tool : tools) {
+                        if (tool != null) {
+                            toolCountMap.merge(tool.toString(), 1L, Long::sum);
+                        }
+                    }
+                }
+            }
+
+            // 按计数降序排列
+            List<Map<String, Object>> result = new ArrayList<>();
+            toolCountMap.entrySet().stream()
+                    .sorted(Map.Entry.<String, Long>comparingByValue().reversed())
+                    .forEach(entry -> result.add(Map.of(
+                            "tool_name", entry.getKey(),
+                            "count", entry.getValue())));
+
+            return result;
+        } catch (Exception e) {
+            log.error("ES stat tool usage error", e);
+            return Collections.emptyList();
+        }
     }
 
     @Override

@@ -45,7 +45,7 @@ public class MysqlLogRepository {
                     .modelVersion(text(entity.getModelVersion())).errorMessage(entity.getErrorMessage())
                     .createTime(createTime(entity.getCreateTime())).build());
         } catch (Exception e) {
-            log.debug("MySQL save decision log error: {}", e.getMessage());
+            log.warn("MySQL save decision log error: {}", e.getMessage());
         }
     }
 
@@ -62,7 +62,7 @@ public class MysqlLogRepository {
                     .retrievalStages(entity.getRetrievalStages()).ragStrategyVersion(text(entity.getRagStrategyVersion()))
                     .createTime(createTime(entity.getCreateTime())).build());
         } catch (Exception e) {
-            log.debug("MySQL save retrieval log error: {}", e.getMessage());
+            log.warn("MySQL save retrieval log error: {}", e.getMessage());
         }
     }
 
@@ -77,7 +77,7 @@ public class MysqlLogRepository {
                     .totalCostTimeMs(number(entity.getTotalCostTimeMs())).finalStatus(text(entity.getFinalStatus()))
                     .modelVersion(text(entity.getModelVersion())).createTime(createTime(entity.getCreateTime())).build());
         } catch (Exception e) {
-            log.debug("MySQL save chat result log error: {}", e.getMessage());
+            log.warn("MySQL save chat result log error: {}", e.getMessage());
         }
     }
 

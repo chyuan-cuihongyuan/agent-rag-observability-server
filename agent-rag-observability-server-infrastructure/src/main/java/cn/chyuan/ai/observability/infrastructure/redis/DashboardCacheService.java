@@ -1,5 +1,6 @@
 package cn.chyuan.ai.observability.infrastructure.redis;
 
+import cn.chyuan.ai.observability.domain.observe.adapter.cache.ICachePort;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import jakarta.annotation.Resource;
@@ -9,7 +10,7 @@ import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Service
-public class DashboardCacheService {
+public class DashboardCacheService implements ICachePort {
 
     @Resource
     private StringRedisTemplate stringRedisTemplate;
@@ -34,6 +35,7 @@ public class DashboardCacheService {
         }
     }
 
+    @Override
     public void increment(String counterKey) {
         try {
             stringRedisTemplate.opsForValue().increment(KEY_PREFIX + "counter:" + counterKey);

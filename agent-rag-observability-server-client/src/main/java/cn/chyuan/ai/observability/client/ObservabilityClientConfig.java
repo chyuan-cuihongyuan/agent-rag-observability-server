@@ -21,7 +21,7 @@ public class ObservabilityClientConfig {
 
     @Data
     public static class HttpConfig {
-        private String url = "http://49.232.169.33:8092";
+        private String url = "http://localhost:8092";
         private String authKey = "";
         private boolean enabled = true;
         private int timeoutMs = 100;
