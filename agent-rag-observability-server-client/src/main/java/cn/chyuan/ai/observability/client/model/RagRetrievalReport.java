@@ -26,4 +26,6 @@ public class RagRetrievalReport {
     private Integer retrievalCostMs;
     private String retrievalStages;
     private String ragStrategyVersion;
+    /** 客户端事件时间，格式 yyyy-MM-dd HH:mm:ss；为空时服务端按接收时间补 */
+    private String createTime;
 }

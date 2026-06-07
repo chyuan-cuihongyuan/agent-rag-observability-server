@@ -6,6 +6,8 @@ import cn.chyuan.ai.observability.domain.evaluate.adapter.repository.IEvalTaskRe
 import cn.chyuan.ai.observability.domain.evaluate.model.entity.EvalDatasetEntity;
 import cn.chyuan.ai.observability.domain.evaluate.model.entity.EvalResultEntity;
 import cn.chyuan.ai.observability.domain.evaluate.model.entity.EvalTaskEntity;
+import jakarta.annotation.Resource;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -23,6 +25,9 @@ public class EvaluateService {
     private final IEvalTaskRepository evalTaskRepository;
     private final IEvalResultRepository evalResultRepository;
     private final IEvalDatasetRepository evalDatasetRepository;
+
+    @Resource
+    private EvalExecutionService evalExecutionService;
 
     public EvaluateService(IEvalTaskRepository evalTaskRepository,
                            IEvalResultRepository evalResultRepository,
@@ -85,10 +90,22 @@ public class EvaluateService {
         return evalDatasetRepository.queryList(page, size);
     }
 
+    /**
+     * 异步执行评测任务 — 提交到 observeExecutor 线程池执行 EvalExecutionService。
+     * 立即返回，让前端轮询进度。
+     */
+    @Async("observeExecutor")
     public void runTask(String taskId) {
         EvalTaskEntity task = evalTaskRepository.queryByTaskId(taskId);
-        if (task == null) return;
+        if (task == null) {
+            return;
+        }
         evalTaskRepository.updateStatus(taskId, "RUNNING");
+        try {
+            evalExecutionService.execute(task);
+        } catch (Exception e) {
+            evalTaskRepository.updateStatus(taskId, "FAILED");
+        }
     }
 
     public List<Map<String, Object>> compareResults(String task1, String task2) {

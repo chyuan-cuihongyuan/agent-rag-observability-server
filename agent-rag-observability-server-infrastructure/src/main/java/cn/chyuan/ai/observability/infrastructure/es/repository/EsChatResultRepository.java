@@ -12,6 +12,7 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Repository;
 
+import co.elastic.clients.elasticsearch._types.SortOrder;
 import co.elastic.clients.elasticsearch._types.Time;
 import java.util.*;
 
@@ -43,6 +44,8 @@ public class EsChatResultRepository implements IChatResultRepository {
             observeMetrics.recordWriteFailure("es");
         }
         mysqlLogRepository.saveChatResultLog(entity);
+        observeMetrics.recordChatResult(entity.getSourceService(), entity.getFinalStatus(),
+                entity.getPromptTokens(), entity.getCompletionTokens(), entity.getTotalCostTimeMs());
     }
 
     @Override
@@ -56,6 +59,23 @@ public class EsChatResultRepository implements IChatResultRepository {
         } catch (Exception e) {
             log.error("ES query chat result error, traceId={}", traceId, e);
             return null;
+        }
+    }
+
+    @Override
+    public List<ChatResultEntity> queryByQuestion(String queryText, int limit) {
+        try {
+            SearchResponse<ChatResultEntity> response = esClient.search(s -> s
+                    .index(INDEX_PREFIX + "*")
+                    .query(q -> q.match(m -> m.field("question").query(queryText)))
+                    .sort(sort -> sort.field(f -> f.field("createTime").order(SortOrder.Desc)))
+                    .size(limit), ChatResultEntity.class);
+            return response.hits().hits().stream()
+                    .map(Hit::source)
+                    .toList();
+        } catch (Exception e) {
+            log.error("ES query by question error, queryText={}", queryText, e);
+            return List.of();
         }
     }
 

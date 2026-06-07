@@ -57,6 +57,35 @@ public class ObserveMetrics {
     }
 
     /**
+     * 记录问答结果指标：状态计数 + Token 累计 + 耗时分布
+     * 此前 chat_result 链路完全无 Prometheus 指标，Token/耗时/状态对告警不可见
+     */
+    public void recordChatResult(String sourceService, String finalStatus,
+                                 Integer promptTokens, Integer completionTokens, Integer totalCostTimeMs) {
+        String service = sourceService == null ? "unknown" : sourceService;
+        String status = finalStatus == null ? "unknown" : finalStatus;
+        Counter.builder("observe_chat_result_total")
+                .tag("source_service", service)
+                .tag("final_status", status)
+                .register(meterRegistry).increment();
+        if (promptTokens != null) {
+            Counter.builder("observe_chat_prompt_tokens_total")
+                    .tag("source_service", service)
+                    .register(meterRegistry).increment(promptTokens);
+        }
+        if (completionTokens != null) {
+            Counter.builder("observe_chat_completion_tokens_total")
+                    .tag("source_service", service)
+                    .register(meterRegistry).increment(completionTokens);
+        }
+        if (totalCostTimeMs != null) {
+            Timer.builder("observe_chat_result_duration")
+                    .tag("source_service", service)
+                    .register(meterRegistry).record(totalCostTimeMs, TimeUnit.MILLISECONDS);
+        }
+    }
+
+    /**
      * 记录写入失败（ES / MySQL / 线程池拒绝等）
      */
     public void recordWriteFailure(String store) {

@@ -46,6 +46,16 @@
         <artifactId>spring-boot-starter-parent</artifactId>
         <version>3.4.3</version>
     </parent>
+    <repositories>
+        <repository>
+            <id>spring-milestones</id>
+            <name>Spring Milestones</name>
+            <url>https://repo.spring.io/milestone</url>
+            <snapshots>
+                <enabled>false</enabled>
+            </snapshots>
+        </repository>
+    </repositories>
     <dependencyManagement>
         <dependencies>
             <!-- MyBatis -->
@@ -132,6 +142,14 @@
                 <groupId>io.opentelemetry</groupId>
                 <artifactId>opentelemetry-bom</artifactId>
                 <version>${opentelemetry.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <!-- Spring AI BOM -->
+            <dependency>
+                <groupId>org.springframework.ai</groupId>
+                <artifactId>spring-ai-bom</artifactId>
+                <version>1.1.0-M3</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>

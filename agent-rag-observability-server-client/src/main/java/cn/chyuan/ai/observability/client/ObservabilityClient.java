@@ -19,6 +19,8 @@ import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.stereotype.Component;
 import jakarta.annotation.PreDestroy;
 
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -28,6 +30,8 @@ import java.util.concurrent.TimeUnit;
 @Component
 @ConditionalOnProperty(prefix = "observability", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class ObservabilityClient {
+
+    private static final DateTimeFormatter CREATE_TIME_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     @Autowired(required = false)
     private RocketMQTemplate rocketMQTemplate;
@@ -154,6 +158,11 @@ public class ObservabilityClient {
         try {
             com.alibaba.fastjson.JSONObject object = (com.alibaba.fastjson.JSONObject) JSON.toJSON(report);
             object.put("messageType", tag);
+            // 客户端事件时间：上报方未显式设置时，以发送时刻补全，避免 MQ/异步延迟丢失真实时间
+            String createTime = object.getString("createTime");
+            if (createTime == null || createTime.isEmpty()) {
+                object.put("createTime", LocalDateTime.now().format(CREATE_TIME_FMT));
+            }
             return object.toJSONString();
         } catch (Exception e) {
             return JSON.toJSONString(report);

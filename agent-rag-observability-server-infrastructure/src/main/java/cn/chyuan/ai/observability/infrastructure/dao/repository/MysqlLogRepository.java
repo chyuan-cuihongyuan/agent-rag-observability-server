@@ -9,6 +9,7 @@ import cn.chyuan.ai.observability.infrastructure.dao.mapper.RagRetrievalLogMappe
 import cn.chyuan.ai.observability.infrastructure.dao.po.AgentDecisionLogPO;
 import cn.chyuan.ai.observability.infrastructure.dao.po.ChatResultLogPO;
 import cn.chyuan.ai.observability.infrastructure.dao.po.RagRetrievalLogPO;
+import cn.chyuan.ai.observability.infrastructure.metrics.ObserveMetrics;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Repository;
@@ -31,6 +32,9 @@ public class MysqlLogRepository {
     @Resource
     private ChatResultLogMapper chatResultLogMapper;
 
+    @Resource
+    private ObserveMetrics observeMetrics;
+
     public void saveDecisionLog(AgentDecisionEntity entity) {
         try {
             agentDecisionLogMapper.insert(AgentDecisionLogPO.builder()
@@ -46,6 +50,7 @@ public class MysqlLogRepository {
                     .createTime(createTime(entity.getCreateTime())).build());
         } catch (Exception e) {
             log.warn("MySQL save decision log error: {}", e.getMessage());
+            observeMetrics.recordWriteFailure("mysql");
         }
     }
 
@@ -63,6 +68,7 @@ public class MysqlLogRepository {
                     .createTime(createTime(entity.getCreateTime())).build());
         } catch (Exception e) {
             log.warn("MySQL save retrieval log error: {}", e.getMessage());
+            observeMetrics.recordWriteFailure("mysql");
         }
     }
 
@@ -78,6 +84,7 @@ public class MysqlLogRepository {
                     .modelVersion(text(entity.getModelVersion())).createTime(createTime(entity.getCreateTime())).build());
         } catch (Exception e) {
             log.warn("MySQL save chat result log error: {}", e.getMessage());
+            observeMetrics.recordWriteFailure("mysql");
         }
     }
 

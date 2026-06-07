@@ -23,4 +23,6 @@ public class ChatResultReport {
     private Integer totalCostTimeMs;
     private String finalStatus;
     private String modelVersion;
+    /** 客户端事件时间，格式 yyyy-MM-dd HH:mm:ss；为空时服务端按接收时间补 */
+    private String createTime;
 }
