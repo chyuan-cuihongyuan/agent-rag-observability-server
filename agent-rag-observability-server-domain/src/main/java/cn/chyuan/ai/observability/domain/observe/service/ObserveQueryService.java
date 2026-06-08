@@ -1,14 +1,12 @@
 package cn.chyuan.ai.observability.domain.observe.service;
 
-import cn.chyuan.ai.observability.domain.observe.adapter.repository.IAgentDecisionRepository;
-import cn.chyuan.ai.observability.domain.observe.adapter.repository.IChatResultRepository;
-import cn.chyuan.ai.observability.domain.observe.adapter.repository.IRagRetrievalRepository;
-import cn.chyuan.ai.observability.domain.observe.model.entity.AgentDecisionEntity;
-import cn.chyuan.ai.observability.domain.observe.model.entity.ChatResultEntity;
-import cn.chyuan.ai.observability.domain.observe.model.entity.RagRetrievalEntity;
+import cn.chyuan.ai.observability.domain.observe.adapter.repository.*;
+import cn.chyuan.ai.observability.domain.observe.model.entity.*;
 import org.springframework.stereotype.Service;
 
-import java.util.*;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 @Service
 public class ObserveQueryService {
@@ -16,13 +14,19 @@ public class ObserveQueryService {
     private final IAgentDecisionRepository agentDecisionRepository;
     private final IRagRetrievalRepository ragRetrievalRepository;
     private final IChatResultRepository chatResultRepository;
+    private final IToolCallLogRepository toolCallLogRepository;
+    private final IMemoryRecallLogRepository memoryRecallLogRepository;
 
     public ObserveQueryService(IAgentDecisionRepository agentDecisionRepository,
                                IRagRetrievalRepository ragRetrievalRepository,
-                               IChatResultRepository chatResultRepository) {
+                               IChatResultRepository chatResultRepository,
+                               IToolCallLogRepository toolCallLogRepository,
+                               IMemoryRecallLogRepository memoryRecallLogRepository) {
         this.agentDecisionRepository = agentDecisionRepository;
         this.ragRetrievalRepository = ragRetrievalRepository;
         this.chatResultRepository = chatResultRepository;
+        this.toolCallLogRepository = toolCallLogRepository;
+        this.memoryRecallLogRepository = memoryRecallLogRepository;
     }
 
     public AgentDecisionEntity queryDecisionByTraceId(String traceId) {
@@ -35,6 +39,14 @@ public class ObserveQueryService {
 
     public ChatResultEntity queryChatResultByTraceId(String traceId) {
         return chatResultRepository.queryByTraceId(traceId);
+    }
+
+    public List<ToolCallLogEntity> queryToolCallsByTraceId(String traceId) {
+        return toolCallLogRepository.queryByTraceId(traceId);
+    }
+
+    public List<MemoryRecallLogEntity> queryMemoryRecallsByTraceId(String traceId) {
+        return memoryRecallLogRepository.queryByTraceId(traceId);
     }
 
     public Map<String, Object> queryTraceList(Map<String, Object> condition, int page, int size) {

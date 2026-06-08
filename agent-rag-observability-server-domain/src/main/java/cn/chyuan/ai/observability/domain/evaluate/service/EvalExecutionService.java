@@ -23,6 +23,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 评测执行引擎 — 把一个评测任务真正“跑起来”：
@@ -163,11 +164,35 @@ public class EvalExecutionService {
                 ? verdict.getSimilarity() : rm.getAnswerSimilarity();
         int hallucinationFlag = hallucinationRate >= 0.3 ? 1 : 0;
 
-        // 3. 按评测类型加权综合分
-        double overall = computeOverall(evalType, rm, faithfulness, relevance, hallucinationRate,
-                completeness, similarity);
+        // 3. 工具调用评测（新增）
+        Double toolSelectionScore = null;
+        Double toolParamScore = null;
+        Double toolCallScore = null;
+        if ("TOOL_CALL".equals(evalType) && item.getExpectedTools() != null) {
+            ToolCallMetrics tcm = evaluateToolCall(sample, item);
+            toolSelectionScore = tcm.selectionScore;
+            toolParamScore = tcm.paramScore;
+            toolCallScore = tcm.overallScore;
+        }
 
-        // 4. 组装明细
+        // 4. Agent 决策评测（新增）
+        Double intentScore = null;
+        Double branchScore = null;
+        Double reasoningScore = null;
+        Double agentDecisionScore = null;
+        if ("AGENT_DECISION".equals(evalType) && (item.getExpectedIntentType() != null || item.getExpectedBranchType() != null)) {
+            AgentDecisionMetrics adm = evaluateAgentDecision(sample, item);
+            intentScore = adm.intentScore;
+            branchScore = adm.branchScore;
+            reasoningScore = adm.reasoningScore;
+            agentDecisionScore = adm.overallScore;
+        }
+
+        // 5. 按评测类型加权综合分
+        double overall = computeOverall(evalType, rm, faithfulness, relevance, hallucinationRate,
+                completeness, similarity, toolCallScore, agentDecisionScore);
+
+        // 6. 组装明细
         JSONObject detail = new JSONObject();
         detail.put("evalType", evalType);
         detail.put("retrievalCount", actualChunks.size());
@@ -175,6 +200,15 @@ public class EvalExecutionService {
         if (verdict != null) {
             detail.put("judgeDegraded", verdict.isDegraded());
             detail.put("judgeDetail", verdict.getDetail());
+        }
+        if (toolCallScore != null) {
+            detail.put("toolSelectionScore", toolSelectionScore);
+            detail.put("toolParamScore", toolParamScore);
+        }
+        if (agentDecisionScore != null) {
+            detail.put("intentScore", intentScore);
+            detail.put("branchScore", branchScore);
+            detail.put("reasoningScore", reasoningScore);
         }
 
         return EvalResultEntity.builder()
@@ -195,6 +229,13 @@ public class EvalExecutionService {
                 .overallScore(round(overall))
                 .evalDetail(detail.toJSONString())
                 .createTime(LocalDateTime.now().format(FMT))
+                .toolSelectionScore(toolSelectionScore != null ? round(toolSelectionScore) : null)
+                .toolParamScore(toolParamScore != null ? round(toolParamScore) : null)
+                .toolCallScore(toolCallScore != null ? round(toolCallScore) : null)
+                .intentScore(intentScore != null ? round(intentScore) : null)
+                .branchScore(branchScore != null ? round(branchScore) : null)
+                .reasoningScore(reasoningScore != null ? round(reasoningScore) : null)
+                .agentDecisionScore(agentDecisionScore != null ? round(agentDecisionScore) : null)
                 .build();
     }
 
@@ -202,17 +243,23 @@ public class EvalExecutionService {
      * 综合分加权策略，按评测类型侧重不同维度：
      * - RAG_RETRIEVAL：只看检索质量（F1 0.6 + Top3 0.4）
      * - ANSWER_QUALITY：侧重答案质量（忠实 0.3 + 相关 0.3 + 完整 0.2 + 相似 0.1 - 幻觉惩罚 0.1）
+     * - TOOL_CALL：工具调用质量（工具选择 0.5 + 参数正确 0.5）
+     * - AGENT_DECISION：决策质量（意图 0.3 + 分支 0.3 + 推理 0.4）
      * - AGENT_DECISION / 其它：检索与质量各半
      */
     private double computeOverall(String evalType, RetrievalMetrics rm, double faithfulness,
                                   double relevance, double hallucinationRate, double completeness,
-                                  double similarity) {
+                                  double similarity, Double toolCallScore, Double agentDecisionScore) {
         switch (evalType) {
             case "RAG_RETRIEVAL":
                 return rm.getF1() * 0.6 + rm.getTop3HitRate() * 0.4;
             case "ANSWER_QUALITY":
                 return clamp(faithfulness * 0.3 + relevance * 0.3 + completeness * 0.2
                         + similarity * 0.1 + (1 - hallucinationRate) * 0.1);
+            case "TOOL_CALL":
+                return toolCallScore != null ? toolCallScore : 0.0;
+            case "AGENT_DECISION":
+                return agentDecisionScore != null ? agentDecisionScore : 0.0;
             default:
                 double retrievalScore = rm.getF1() * 0.6 + rm.getTop3HitRate() * 0.4;
                 double qualityScore = clamp(faithfulness * 0.4 + relevance * 0.4
@@ -220,6 +267,86 @@ public class EvalExecutionService {
                 return retrievalScore * 0.5 + qualityScore * 0.5;
         }
     }
+
+    /**
+     * 评测工具调用质量
+     */
+    private ToolCallMetrics evaluateToolCall(AnswerSample sample, EvalDatasetItem item) {
+        List<String> expectedTools = item.getExpectedTools();
+        List<String> actualTools = sample == null ? List.of() : sample.getToolCalls();
+
+        // 工具选择正确率：计算期望工具和实际工具的匹配度
+        double selectionScore = 0.0;
+        if (expectedTools != null && !expectedTools.isEmpty()) {
+            long matchCount = expectedTools.stream()
+                    .filter(actualTools::contains)
+                    .count();
+            selectionScore = (double) matchCount / expectedTools.size();
+        }
+
+        // 工具参数正确率：简化实现，基于参数匹配
+        double paramScore = 0.0;
+        if (item.getExpectedToolParams() != null && sample != null && sample.getToolParams() != null) {
+            int totalParams = item.getExpectedToolParams().size();
+            int matchParams = 0;
+            for (Map.Entry<String, Object> entry : item.getExpectedToolParams().entrySet()) {
+                Object actualValue = sample.getToolParams().get(entry.getKey());
+                if (actualValue != null && actualValue.equals(entry.getValue())) {
+                    matchParams++;
+                }
+            }
+            paramScore = totalParams > 0 ? (double) matchParams / totalParams : 0.0;
+        }
+
+        double overallScore = selectionScore * 0.5 + paramScore * 0.5;
+
+        return new ToolCallMetrics(selectionScore, paramScore, overallScore);
+    }
+
+    /**
+     * 评测 Agent 决策质量
+     */
+    private AgentDecisionMetrics evaluateAgentDecision(AnswerSample sample, EvalDatasetItem item) {
+        // 意图识别正确率
+        double intentScore = 0.0;
+        if (item.getExpectedIntentType() != null && sample != null) {
+            intentScore = item.getExpectedIntentType().equals(sample.getIntentType()) ? 1.0 : 0.0;
+        }
+
+        // 分支选择正确率
+        double branchScore = 0.0;
+        if (item.getExpectedBranchType() != null && sample != null) {
+            branchScore = item.getExpectedBranchType().equals(sample.getBranchType()) ? 1.0 : 0.0;
+        }
+
+        // 推理质量分：基于 LLM 评判或简化实现
+        double reasoningScore = 0.0;
+        if (item.getExpectedReasoningSteps() != null && sample != null && sample.getReasoningSteps() != null) {
+            // 简化实现：基于步骤匹配度
+            String[] expectedSteps = item.getExpectedReasoningSteps().split(";");
+            String[] actualSteps = sample.getReasoningSteps().split(";");
+            int matchCount = 0;
+            for (String expected : expectedSteps) {
+                for (String actual : actualSteps) {
+                    if (actual.contains(expected.trim())) {
+                        matchCount++;
+                        break;
+                    }
+                }
+            }
+            reasoningScore = expectedSteps.length > 0 ? (double) matchCount / expectedSteps.length : 0.0;
+        }
+
+        double overallScore = intentScore * 0.3 + branchScore * 0.3 + reasoningScore * 0.4;
+
+        return new AgentDecisionMetrics(intentScore, branchScore, reasoningScore, overallScore);
+    }
+
+    /** 工具调用评测指标 */
+    private record ToolCallMetrics(double selectionScore, double paramScore, double overallScore) {}
+
+    /** Agent 决策评测指标 */
+    private record AgentDecisionMetrics(double intentScore, double branchScore, double reasoningScore, double overallScore) {}
 
     private void flush(List<EvalResultEntity> buffer, String taskId, int completed, double sumOverall) {
         evalResultRepository.batchSave(new ArrayList<>(buffer));

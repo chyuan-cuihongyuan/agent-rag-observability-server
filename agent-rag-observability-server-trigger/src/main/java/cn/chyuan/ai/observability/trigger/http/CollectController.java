@@ -1,12 +1,7 @@
 package cn.chyuan.ai.observability.trigger.http;
 
-import cn.chyuan.ai.observability.api.dto.collect.AgentDecisionDTO;
-import cn.chyuan.ai.observability.api.dto.collect.ChatResultDTO;
-import cn.chyuan.ai.observability.api.dto.collect.ObserveBatchDTO;
-import cn.chyuan.ai.observability.api.dto.collect.RagRetrievalDTO;
-import cn.chyuan.ai.observability.domain.observe.model.entity.AgentDecisionEntity;
-import cn.chyuan.ai.observability.domain.observe.model.entity.ChatResultEntity;
-import cn.chyuan.ai.observability.domain.observe.model.entity.RagRetrievalEntity;
+import cn.chyuan.ai.observability.api.dto.collect.*;
+import cn.chyuan.ai.observability.domain.observe.model.entity.*;
 import cn.chyuan.ai.observability.domain.observe.service.ObserveCollectService;
 import cn.chyuan.ai.observability.types.response.Response;
 import lombok.extern.slf4j.Slf4j;
@@ -68,6 +63,33 @@ public class CollectController {
                 .totalCostTimeMs(dto.getTotalCostTimeMs()).finalStatus(dto.getFinalStatus())
                 .modelVersion(dto.getModelVersion()).createTime(dto.getCreateTime()).build();
         observeCollectService.collectChatResult(entity);
+        return Response.success("ok");
+    }
+
+    @PostMapping("/tool_call")
+    public Response<String> collectToolCall(@RequestBody ToolCallLogDTO dto) {
+        ToolCallLogEntity entity = ToolCallLogEntity.builder()
+                .traceId(dto.getTraceId()).spanId(dto.getSpanId())
+                .parentSpanId(dto.getParentSpanId()).toolName(dto.getToolName())
+                .toolInput(dto.getToolInput()).toolOutput(dto.getToolOutput())
+                .status(dto.getStatus()).costTimeMs(dto.getCostTimeMs())
+                .errorMessage(dto.getErrorMessage()).callOrder(dto.getCallOrder())
+                .createTime(dto.getCreateTime()).build();
+        observeCollectService.collectToolCallLog(entity);
+        return Response.success("ok");
+    }
+
+    @PostMapping("/memory_recall")
+    public Response<String> collectMemoryRecall(@RequestBody MemoryRecallLogDTO dto) {
+        MemoryRecallLogEntity entity = MemoryRecallLogEntity.builder()
+                .traceId(dto.getTraceId()).queryText(dto.getQueryText())
+                .sessionMemoryCount(dto.getSessionMemoryCount())
+                .agentMemoryCount(dto.getAgentMemoryCount())
+                .sessionMemoryScores(dto.getSessionMemoryScores())
+                .agentMemoryScores(dto.getAgentMemoryScores())
+                .injectContent(dto.getInjectContent()).costTimeMs(dto.getCostTimeMs())
+                .createTime(dto.getCreateTime()).build();
+        observeCollectService.collectMemoryRecallLog(entity);
         return Response.success("ok");
     }
 

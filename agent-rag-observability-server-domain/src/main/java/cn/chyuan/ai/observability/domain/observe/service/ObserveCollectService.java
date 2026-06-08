@@ -1,12 +1,8 @@
 package cn.chyuan.ai.observability.domain.observe.service;
 
 import cn.chyuan.ai.observability.domain.observe.adapter.cache.ICachePort;
-import cn.chyuan.ai.observability.domain.observe.adapter.repository.IAgentDecisionRepository;
-import cn.chyuan.ai.observability.domain.observe.adapter.repository.IChatResultRepository;
-import cn.chyuan.ai.observability.domain.observe.adapter.repository.IRagRetrievalRepository;
-import cn.chyuan.ai.observability.domain.observe.model.entity.AgentDecisionEntity;
-import cn.chyuan.ai.observability.domain.observe.model.entity.ChatResultEntity;
-import cn.chyuan.ai.observability.domain.observe.model.entity.RagRetrievalEntity;
+import cn.chyuan.ai.observability.domain.observe.adapter.repository.*;
+import cn.chyuan.ai.observability.domain.observe.model.entity.*;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -20,15 +16,21 @@ public class ObserveCollectService {
     private final IAgentDecisionRepository agentDecisionRepository;
     private final IRagRetrievalRepository ragRetrievalRepository;
     private final IChatResultRepository chatResultRepository;
+    private final IToolCallLogRepository toolCallLogRepository;
+    private final IMemoryRecallLogRepository memoryRecallLogRepository;
     private final ICachePort cachePort;
 
     public ObserveCollectService(IAgentDecisionRepository agentDecisionRepository,
                                   IRagRetrievalRepository ragRetrievalRepository,
                                   IChatResultRepository chatResultRepository,
+                                  IToolCallLogRepository toolCallLogRepository,
+                                  IMemoryRecallLogRepository memoryRecallLogRepository,
                                   ICachePort cachePort) {
         this.agentDecisionRepository = agentDecisionRepository;
         this.ragRetrievalRepository = ragRetrievalRepository;
         this.chatResultRepository = chatResultRepository;
+        this.toolCallLogRepository = toolCallLogRepository;
+        this.memoryRecallLogRepository = memoryRecallLogRepository;
         this.cachePort = cachePort;
     }
 
@@ -54,5 +56,21 @@ public class ObserveCollectService {
         }
         chatResultRepository.save(entity);
         cachePort.increment("chat_result");
+    }
+
+    public void collectToolCallLog(ToolCallLogEntity entity) {
+        if (entity.getCreateTime() == null) {
+            entity.setCreateTime(LocalDateTime.now().format(FMT));
+        }
+        toolCallLogRepository.save(entity);
+        cachePort.increment("tool_call_log");
+    }
+
+    public void collectMemoryRecallLog(MemoryRecallLogEntity entity) {
+        if (entity.getCreateTime() == null) {
+            entity.setCreateTime(LocalDateTime.now().format(FMT));
+        }
+        memoryRecallLogRepository.save(entity);
+        cachePort.increment("memory_recall_log");
     }
 }

@@ -2,13 +2,11 @@ package cn.chyuan.ai.observability.trigger.http;
 
 import cn.chyuan.ai.observability.api.dto.query.FullTraceDTO;
 import cn.chyuan.ai.observability.api.dto.query.TraceQueryDTO;
-import cn.chyuan.ai.observability.domain.observe.model.entity.AgentDecisionEntity;
-import cn.chyuan.ai.observability.domain.observe.model.entity.ChatResultEntity;
-import cn.chyuan.ai.observability.domain.observe.model.entity.RagRetrievalEntity;
+import cn.chyuan.ai.observability.domain.observe.model.entity.*;
 import cn.chyuan.ai.observability.domain.observe.service.ObserveQueryService;
+import cn.chyuan.ai.observability.trigger.http.support.RequestValidator;
 import cn.chyuan.ai.observability.types.response.Response;
 import cn.chyuan.ai.observability.types.response.ResponseCode;
-import cn.chyuan.ai.observability.trigger.http.support.RequestValidator;
 import com.alibaba.fastjson.JSON;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
@@ -16,6 +14,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @Slf4j
 @RestController
@@ -39,12 +38,20 @@ public class QueryController {
         AgentDecisionEntity decision = observeQueryService.queryDecisionByTraceId(traceId);
         RagRetrievalEntity retrieval = observeQueryService.queryRetrievalByTraceId(traceId);
         ChatResultEntity chatResult = observeQueryService.queryChatResultByTraceId(traceId);
+        List<ToolCallLogEntity> toolCalls = observeQueryService.queryToolCallsByTraceId(traceId);
+        List<MemoryRecallLogEntity> memoryRecalls = observeQueryService.queryMemoryRecallsByTraceId(traceId);
 
         FullTraceDTO dto = FullTraceDTO.builder()
                 .traceId(traceId)
                 .agentDecision(decision != null ? JSON.parseObject(JSON.toJSONString(decision)) : null)
                 .ragRetrieval(retrieval != null ? JSON.parseObject(JSON.toJSONString(retrieval)) : null)
                 .chatResult(chatResult != null ? JSON.parseObject(JSON.toJSONString(chatResult)) : null)
+                .toolCalls(toolCalls != null && !toolCalls.isEmpty() ?
+                        toolCalls.stream()
+                                .map(tc -> JSON.parseObject(JSON.toJSONString(tc)))
+                                .collect(Collectors.toList()) : null)
+                .memoryRecall(memoryRecalls != null && !memoryRecalls.isEmpty() ?
+                        JSON.parseObject(JSON.toJSONString(memoryRecalls.get(0))) : null)
                 .sessionId(decision != null ? decision.getSessionId() : (retrieval != null ? retrieval.getSessionId() : ""))
                 .ownerUserId(decision != null ? decision.getOwnerUserId() : "")
                 .sourceService(decision != null ? decision.getSourceService() : "")

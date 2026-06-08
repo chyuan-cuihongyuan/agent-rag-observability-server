@@ -5,6 +5,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.List;
 import java.util.Map;
 
 @Data
@@ -21,4 +22,8 @@ public class FullTraceDTO {
     private Map<String, Object> agentDecision;
     private Map<String, Object> ragRetrieval;
     private Map<String, Object> chatResult;
+    /** 工具调用列表 */
+    private List<Map<String, Object>> toolCalls;
+    /** 记忆检索结果 */
+    private Map<String, Object> memoryRecall;
 }
