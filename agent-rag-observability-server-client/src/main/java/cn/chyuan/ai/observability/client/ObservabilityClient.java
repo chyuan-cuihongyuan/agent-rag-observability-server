@@ -2,7 +2,9 @@ package cn.chyuan.ai.observability.client;
 
 import cn.chyuan.ai.observability.client.model.AgentDecisionReport;
 import cn.chyuan.ai.observability.client.model.ChatResultReport;
+import cn.chyuan.ai.observability.client.model.MemoryRecallLogReport;
 import cn.chyuan.ai.observability.client.model.RagRetrievalReport;
+import cn.chyuan.ai.observability.client.model.ToolCallLogReport;
 import com.alibaba.fastjson.JSON;
 import io.opentelemetry.api.GlobalOpenTelemetry;
 import io.opentelemetry.api.trace.Span;
@@ -76,6 +78,14 @@ public class ObservabilityClient {
         sendAsync("chat_result", report);
     }
 
+    public void reportToolCall(ToolCallLogReport report) {
+        sendAsync("tool_call", report);
+    }
+
+    public void reportMemoryRecall(MemoryRecallLogReport report) {
+        sendAsync("memory_recall", report);
+    }
+
     private void sendAsync(String tag, Object report) {
         executor.execute(() -> {
             Span span = null;
@@ -132,6 +142,8 @@ public class ObservabilityClient {
                 case "decision" -> endpoint = "/api/v1/collect/agent_decision";
                 case "retrieval" -> endpoint = "/api/v1/collect/rag_retrieval";
                 case "chat_result" -> endpoint = "/api/v1/collect/chat_result";
+                case "tool_call" -> endpoint = "/api/v1/collect/tool_call";
+                case "memory_recall" -> endpoint = "/api/v1/collect/memory_recall";
                 default -> { return; }
             }
             Request.Builder rb = new Request.Builder()

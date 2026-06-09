@@ -25,7 +25,9 @@ public class EsIndexInitializer implements CommandLineRunner {
     private static final Map<String, String> INDICES = Map.of(
             "agent_decision_log", "es-templates/agent_decision_log.json",
             "rag_retrieval_log", "es-templates/rag_retrieval_log.json",
-            "chat_result_log", "es-templates/chat_result_log.json"
+            "chat_result_log", "es-templates/chat_result_log.json",
+            "tool_call_log", "es-templates/tool_call_log.json",
+            "memory_recall_log", "es-templates/memory_recall_log.json"
     );
 
     @Override

@@ -1,0 +1,22 @@
+{
+  "settings": {
+    "number_of_shards": 3,
+    "number_of_replicas": 1,
+    "refresh_interval": "5s"
+  },
+  "mappings": {
+    "properties": {
+      "traceId": {"type": "keyword"},
+      "spanId": {"type": "keyword"},
+      "parentSpanId": {"type": "keyword"},
+      "toolName": {"type": "keyword"},
+      "toolInput": {"type": "text", "analyzer": "ik_max_word"},
+      "toolOutput": {"type": "text", "analyzer": "ik_max_word"},
+      "status": {"type": "keyword"},
+      "costTimeMs": {"type": "integer"},
+      "errorMessage": {"type": "text"},
+      "callOrder": {"type": "integer"},
+      "createTime": {"type": "date", "format": "yyyy-MM-dd HH:mm:ss"}
+    }
+  }
+}

@@ -3,10 +3,12 @@ package cn.chyuan.ai.observability.domain.observe.service;
 import cn.chyuan.ai.observability.domain.observe.adapter.repository.IAgentDecisionRepository;
 import cn.chyuan.ai.observability.domain.observe.adapter.repository.IChatResultRepository;
 import cn.chyuan.ai.observability.domain.observe.adapter.repository.IRagRetrievalRepository;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
 
+@Slf4j
 @Service
 public class DashboardService {
 
@@ -40,7 +42,9 @@ public class DashboardService {
             if (stats != null && !stats.isEmpty()) {
                 return Double.parseDouble(stats.get(0).getOrDefault("rate", "0").toString());
             }
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            log.warn("统计空检索率失败, startTime={}, endTime={}", startTime, endTime, e);
+        }
         return 0.0;
     }
 

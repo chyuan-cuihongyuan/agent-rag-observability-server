@@ -2,7 +2,9 @@ package cn.chyuan.ai.observability.infrastructure.mq.consumer;
 
 import cn.chyuan.ai.observability.domain.observe.model.entity.AgentDecisionEntity;
 import cn.chyuan.ai.observability.domain.observe.model.entity.ChatResultEntity;
+import cn.chyuan.ai.observability.domain.observe.model.entity.MemoryRecallLogEntity;
 import cn.chyuan.ai.observability.domain.observe.model.entity.RagRetrievalEntity;
+import cn.chyuan.ai.observability.domain.observe.model.entity.ToolCallLogEntity;
 import cn.chyuan.ai.observability.domain.observe.service.ObserveCollectService;
 import com.alibaba.fastjson.JSON;
 import jakarta.annotation.Resource;
@@ -49,6 +51,14 @@ public class TraceMessageConsumer implements RocketMQListener<String> {
                     ChatResultEntity entity = JSON.parseObject(message, ChatResultEntity.class);
                     observeCollectService.collectChatResult(entity);
                 }
+                case "tool_call" -> {
+                    ToolCallLogEntity entity = JSON.parseObject(message, ToolCallLogEntity.class);
+                    observeCollectService.collectToolCallLog(entity);
+                }
+                case "memory_recall" -> {
+                    MemoryRecallLogEntity entity = JSON.parseObject(message, MemoryRecallLogEntity.class);
+                    observeCollectService.collectMemoryRecallLog(entity);
+                }
                 default -> log.warn("unknown trace message type: {}", tag);
             }
         } catch (Exception e) {
@@ -70,7 +80,11 @@ public class TraceMessageConsumer implements RocketMQListener<String> {
             if (obj.containsKey("intentType") || obj.containsKey("branchType")) return "decision";
             if (obj.containsKey("retrievalTopk") || obj.containsKey("retrievalCount")) return "retrieval";
             if (obj.containsKey("question") && obj.containsKey("answer")) return "chat_result";
-        } catch (Exception ignored) {}
+            if (obj.containsKey("toolName") && obj.containsKey("toolOutput")) return "tool_call";
+            if (obj.containsKey("sessionMemoryScores") || obj.containsKey("agentMemoryScores")) return "memory_recall";
+        } catch (Exception e) {
+            log.warn("解析 trace 消息 tag 失败, message={}", message != null && message.length() > 200 ? message.substring(0, 200) : message, e);
+        }
         return "unknown";
     }
 
@@ -78,6 +92,7 @@ public class TraceMessageConsumer implements RocketMQListener<String> {
         try {
             return JSON.parseObject(message).getString("traceId");
         } catch (Exception e) {
+            log.debug("从消息中提取 traceId 失败", e);
             return "";
         }
     }

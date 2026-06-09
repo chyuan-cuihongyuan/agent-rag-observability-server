@@ -1,0 +1,20 @@
+{
+  "settings": {
+    "number_of_shards": 3,
+    "number_of_replicas": 1,
+    "refresh_interval": "5s"
+  },
+  "mappings": {
+    "properties": {
+      "traceId": {"type": "keyword"},
+      "queryText": {"type": "text", "analyzer": "ik_max_word"},
+      "sessionMemoryCount": {"type": "integer"},
+      "agentMemoryCount": {"type": "integer"},
+      "sessionMemoryScores": {"type": "object", "enabled": true},
+      "agentMemoryScores": {"type": "object", "enabled": true},
+      "injectContent": {"type": "text", "analyzer": "ik_max_word"},
+      "costTimeMs": {"type": "integer"},
+      "createTime": {"type": "date", "format": "yyyy-MM-dd HH:mm:ss"}
+    }
+  }
+}
