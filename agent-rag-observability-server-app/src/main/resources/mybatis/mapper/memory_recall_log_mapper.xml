@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="cn.chyuan.ai.observability.infrastructure.dao.mapper.MemoryRecallLogMapper">
+    <insert id="insert" parameterType="cn.chyuan.ai.observability.infrastructure.dao.po.MemoryRecallLogPO">
+        INSERT INTO memory_recall_log (trace_id, query_text, session_memory_count, agent_memory_count,
+            session_memory_scores, agent_memory_scores, inject_content, cost_time_ms, create_time)
+        VALUES (#{traceId}, #{queryText}, #{sessionMemoryCount}, #{agentMemoryCount},
+            #{sessionMemoryScores}, #{agentMemoryScores}, #{injectContent}, #{costTimeMs}, #{createTime})
+    </insert>
+</mapper>

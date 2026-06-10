@@ -39,9 +39,20 @@ public class DashboardService {
     public double emptyRetrievalRate(String startTime, String endTime) {
         try {
             List<Map<String, Object>> stats = ragRetrievalRepository.statEmptyRetrievalRate(startTime, endTime);
-            if (stats != null && !stats.isEmpty()) {
-                return Double.parseDouble(stats.get(0).getOrDefault("rate", "0").toString());
+            if (stats == null || stats.isEmpty()) {
+                return 0.0;
             }
+            long emptyCount = 0;
+            long totalCount = 0;
+            for (Map<String, Object> bucket : stats) {
+                long count = Long.parseLong(bucket.getOrDefault("count", "0").toString());
+                totalCount += count;
+                if ("1".equals(bucket.getOrDefault("emptyRetrieval", "0").toString())) {
+                    emptyCount = count;
+                }
+            }
+            if (totalCount == 0) return 0.0;
+            return Math.round((double) emptyCount / totalCount * 10000) / 100.0; // 保留两位小数
         } catch (Exception e) {
             log.warn("统计空检索率失败, startTime={}, endTime={}", startTime, endTime, e);
         }

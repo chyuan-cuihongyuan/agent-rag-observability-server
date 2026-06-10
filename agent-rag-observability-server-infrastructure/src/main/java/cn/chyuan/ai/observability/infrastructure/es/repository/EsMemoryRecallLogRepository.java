@@ -2,6 +2,7 @@ package cn.chyuan.ai.observability.infrastructure.es.repository;
 
 import cn.chyuan.ai.observability.domain.observe.adapter.repository.IMemoryRecallLogRepository;
 import cn.chyuan.ai.observability.domain.observe.model.entity.MemoryRecallLogEntity;
+import cn.chyuan.ai.observability.infrastructure.dao.repository.MysqlLogRepository;
 import cn.chyuan.ai.observability.infrastructure.es.bulk.EsBulkIndexService;
 import cn.chyuan.ai.observability.infrastructure.metrics.ObserveMetrics;
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
@@ -33,6 +34,9 @@ public class EsMemoryRecallLogRepository implements IMemoryRecallLogRepository {
     @Resource
     private ObserveMetrics observeMetrics;
 
+    @Resource
+    private MysqlLogRepository mysqlLogRepository;
+
     @Override
     public void save(MemoryRecallLogEntity entity) {
         try {
@@ -42,6 +46,7 @@ public class EsMemoryRecallLogRepository implements IMemoryRecallLogRepository {
             log.error("ES save memory recall log error, traceId={}", entity.getTraceId(), e);
             observeMetrics.recordWriteFailure("es");
         }
+        mysqlLogRepository.saveMemoryRecallLog(entity);
     }
 
     @Override

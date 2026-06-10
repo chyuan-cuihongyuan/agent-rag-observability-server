@@ -133,6 +133,29 @@ public class CollectController {
                     .totalCostTimeMs(c.getTotalCostTimeMs()).finalStatus(c.getFinalStatus())
                     .modelVersion(c.getModelVersion()).createTime(c.getCreateTime()).build());
         }
+        if (dto.getToolCalls() != null) {
+            for (ToolCallLogDTO t : dto.getToolCalls()) {
+                observeCollectService.collectToolCallLog(ToolCallLogEntity.builder()
+                        .traceId(t.getTraceId()).spanId(t.getSpanId())
+                        .parentSpanId(t.getParentSpanId()).toolName(t.getToolName())
+                        .toolInput(t.getToolInput()).toolOutput(t.getToolOutput())
+                        .status(t.getStatus()).costTimeMs(t.getCostTimeMs())
+                        .errorMessage(t.getErrorMessage()).callOrder(t.getCallOrder())
+                        .createTime(t.getCreateTime()).build());
+            }
+        }
+        if (dto.getMemoryRecalls() != null) {
+            for (MemoryRecallLogDTO m : dto.getMemoryRecalls()) {
+                observeCollectService.collectMemoryRecallLog(MemoryRecallLogEntity.builder()
+                        .traceId(m.getTraceId()).queryText(m.getQueryText())
+                        .sessionMemoryCount(m.getSessionMemoryCount())
+                        .agentMemoryCount(m.getAgentMemoryCount())
+                        .sessionMemoryScores(m.getSessionMemoryScores())
+                        .agentMemoryScores(m.getAgentMemoryScores())
+                        .injectContent(m.getInjectContent()).costTimeMs(m.getCostTimeMs())
+                        .createTime(m.getCreateTime()).build());
+            }
+        }
         return Response.success("ok");
     }
 }

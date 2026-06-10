@@ -205,7 +205,8 @@ public class EsAgentDecisionRepository implements IAgentDecisionRepository {
                     .sorted(Map.Entry.<String, Long>comparingByValue().reversed())
                     .forEach(entry -> result.add(Map.of(
                             "tool_name", entry.getKey(),
-                            "count", entry.getValue())));
+                            "call_count", entry.getValue(),
+                            "avg_cost_ms", 0)));
 
             return result;
         } catch (Exception e) {

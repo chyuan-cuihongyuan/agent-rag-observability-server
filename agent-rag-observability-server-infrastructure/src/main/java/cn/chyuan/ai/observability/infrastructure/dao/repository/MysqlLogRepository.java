@@ -2,13 +2,19 @@ package cn.chyuan.ai.observability.infrastructure.dao.repository;
 
 import cn.chyuan.ai.observability.domain.observe.model.entity.AgentDecisionEntity;
 import cn.chyuan.ai.observability.domain.observe.model.entity.ChatResultEntity;
+import cn.chyuan.ai.observability.domain.observe.model.entity.MemoryRecallLogEntity;
 import cn.chyuan.ai.observability.domain.observe.model.entity.RagRetrievalEntity;
+import cn.chyuan.ai.observability.domain.observe.model.entity.ToolCallLogEntity;
 import cn.chyuan.ai.observability.infrastructure.dao.mapper.AgentDecisionLogMapper;
 import cn.chyuan.ai.observability.infrastructure.dao.mapper.ChatResultLogMapper;
+import cn.chyuan.ai.observability.infrastructure.dao.mapper.MemoryRecallLogMapper;
 import cn.chyuan.ai.observability.infrastructure.dao.mapper.RagRetrievalLogMapper;
+import cn.chyuan.ai.observability.infrastructure.dao.mapper.ToolCallLogMapper;
 import cn.chyuan.ai.observability.infrastructure.dao.po.AgentDecisionLogPO;
 import cn.chyuan.ai.observability.infrastructure.dao.po.ChatResultLogPO;
+import cn.chyuan.ai.observability.infrastructure.dao.po.MemoryRecallLogPO;
 import cn.chyuan.ai.observability.infrastructure.dao.po.RagRetrievalLogPO;
+import cn.chyuan.ai.observability.infrastructure.dao.po.ToolCallLogPO;
 import cn.chyuan.ai.observability.infrastructure.metrics.ObserveMetrics;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -31,6 +37,12 @@ public class MysqlLogRepository {
 
     @Resource
     private ChatResultLogMapper chatResultLogMapper;
+
+    @Resource
+    private ToolCallLogMapper toolCallLogMapper;
+
+    @Resource
+    private MemoryRecallLogMapper memoryRecallLogMapper;
 
     @Resource
     private ObserveMetrics observeMetrics;
@@ -84,6 +96,38 @@ public class MysqlLogRepository {
                     .modelVersion(text(entity.getModelVersion())).createTime(createTime(entity.getCreateTime())).build());
         } catch (Exception e) {
             log.warn("MySQL save chat result log error: {}", e.getMessage());
+            observeMetrics.recordWriteFailure("mysql");
+        }
+    }
+
+    public void saveToolCallLog(ToolCallLogEntity entity) {
+        try {
+            toolCallLogMapper.insert(ToolCallLogPO.builder()
+                    .traceId(text(entity.getTraceId())).spanId(text(entity.getSpanId()))
+                    .parentSpanId(text(entity.getParentSpanId())).toolName(text(entity.getToolName()))
+                    .toolInput(entity.getToolInput()).toolOutput(entity.getToolOutput())
+                    .status(text(entity.getStatus())).costTimeMs(number(entity.getCostTimeMs()))
+                    .errorMessage(entity.getErrorMessage()).callOrder(number(entity.getCallOrder()))
+                    .createTime(createTime(entity.getCreateTime())).build());
+        } catch (Exception e) {
+            log.warn("MySQL save tool call log error: {}", e.getMessage());
+            observeMetrics.recordWriteFailure("mysql");
+        }
+    }
+
+    public void saveMemoryRecallLog(MemoryRecallLogEntity entity) {
+        try {
+            memoryRecallLogMapper.insert(MemoryRecallLogPO.builder()
+                    .traceId(text(entity.getTraceId())).queryText(entity.getQueryText())
+                    .sessionMemoryCount(number(entity.getSessionMemoryCount()))
+                    .agentMemoryCount(number(entity.getAgentMemoryCount()))
+                    .sessionMemoryScores(entity.getSessionMemoryScores())
+                    .agentMemoryScores(entity.getAgentMemoryScores())
+                    .injectContent(entity.getInjectContent())
+                    .costTimeMs(number(entity.getCostTimeMs()))
+                    .createTime(createTime(entity.getCreateTime())).build());
+        } catch (Exception e) {
+            log.warn("MySQL save memory recall log error: {}", e.getMessage());
             observeMetrics.recordWriteFailure("mysql");
         }
     }

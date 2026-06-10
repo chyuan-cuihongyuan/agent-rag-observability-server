@@ -2,6 +2,7 @@ package cn.chyuan.ai.observability.infrastructure.es.repository;
 
 import cn.chyuan.ai.observability.domain.observe.adapter.repository.IToolCallLogRepository;
 import cn.chyuan.ai.observability.domain.observe.model.entity.ToolCallLogEntity;
+import cn.chyuan.ai.observability.infrastructure.dao.repository.MysqlLogRepository;
 import cn.chyuan.ai.observability.infrastructure.es.bulk.EsBulkIndexService;
 import cn.chyuan.ai.observability.infrastructure.metrics.ObserveMetrics;
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
@@ -33,6 +34,9 @@ public class EsToolCallLogRepository implements IToolCallLogRepository {
     @Resource
     private ObserveMetrics observeMetrics;
 
+    @Resource
+    private MysqlLogRepository mysqlLogRepository;
+
     @Override
     public void save(ToolCallLogEntity entity) {
         try {
@@ -42,6 +46,7 @@ public class EsToolCallLogRepository implements IToolCallLogRepository {
             log.error("ES save tool call log error, traceId={}", entity.getTraceId(), e);
             observeMetrics.recordWriteFailure("es");
         }
+        mysqlLogRepository.saveToolCallLog(entity);
     }
 
     @Override

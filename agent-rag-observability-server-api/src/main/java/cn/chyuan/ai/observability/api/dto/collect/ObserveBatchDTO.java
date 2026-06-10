@@ -15,4 +15,6 @@ public class ObserveBatchDTO {
     private AgentDecisionDTO agentDecision;
     private RagRetrievalDTO ragRetrieval;
     private ChatResultDTO chatResult;
+    private List<ToolCallLogDTO> toolCalls;
+    private List<MemoryRecallLogDTO> memoryRecalls;
 }
