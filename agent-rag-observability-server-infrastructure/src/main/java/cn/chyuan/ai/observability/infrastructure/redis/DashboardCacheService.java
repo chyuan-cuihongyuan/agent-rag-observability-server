@@ -43,4 +43,13 @@ public class DashboardCacheService implements ICachePort {
             log.debug("redis increment error", e);
         }
     }
+
+    @Override
+    public void delete(String key) {
+        try {
+            stringRedisTemplate.delete(KEY_PREFIX + key);
+        } catch (Exception e) {
+            log.debug("redis cache delete error", e);
+        }
+    }
 }

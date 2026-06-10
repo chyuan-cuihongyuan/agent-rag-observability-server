@@ -24,6 +24,6 @@ public class FullTraceDTO {
     private Map<String, Object> chatResult;
     /** 工具调用列表 */
     private List<Map<String, Object>> toolCalls;
-    /** 记忆检索结果 */
-    private Map<String, Object> memoryRecall;
+    /** 记忆检索结果列表（支持同一 Trace 多次记忆召回） */
+    private List<Map<String, Object>> memoryRecalls;
 }

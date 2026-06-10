@@ -121,8 +121,8 @@ public class MysqlLogRepository {
                     .traceId(text(entity.getTraceId())).queryText(entity.getQueryText())
                     .sessionMemoryCount(number(entity.getSessionMemoryCount()))
                     .agentMemoryCount(number(entity.getAgentMemoryCount()))
-                    .sessionMemoryScores(entity.getSessionMemoryScores())
-                    .agentMemoryScores(entity.getAgentMemoryScores())
+                    .sessionMemoryScores(entity.getSessionMemoryScores() != null ? com.alibaba.fastjson.JSON.toJSONString(entity.getSessionMemoryScores()) : null)
+                    .agentMemoryScores(entity.getAgentMemoryScores() != null ? com.alibaba.fastjson.JSON.toJSONString(entity.getAgentMemoryScores()) : null)
                     .injectContent(entity.getInjectContent())
                     .costTimeMs(number(entity.getCostTimeMs()))
                     .createTime(createTime(entity.getCreateTime())).build());

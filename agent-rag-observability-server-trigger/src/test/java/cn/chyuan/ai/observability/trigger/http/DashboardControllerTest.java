@@ -144,8 +144,10 @@ class DashboardControllerTest {
 
         List<Map<String, Object>> trendData = new ArrayList<>();
         Map<String, Object> item = new HashMap<>();
-        item.put("time", "2025-01-01 10:00");
-        item.put("count", 25);
+        item.put("time_bucket", "2025-01-01 10:00");
+        item.put("request_count", 25);
+        item.put("avg_cost_ms", 1200.0);
+        item.put("fail_count", 2);
         trendData.add(item);
         when(dashboardService.getTrend(anyString(), anyString(), eq("hour")))
                 .thenReturn(trendData);
@@ -158,7 +160,7 @@ class DashboardControllerTest {
         assertEquals("0000", response.getCode());
         assertNotNull(response.getData());
         assertEquals(1, response.getData().size());
-        assertEquals(25, response.getData().get(0).get("count"));
+        assertEquals(25, response.getData().get(0).get("request_count"));
 
         // 验证 service 被调用
         verify(dashboardService, times(1)).getTrend(anyString(), anyString(), eq("hour"));
@@ -170,7 +172,7 @@ class DashboardControllerTest {
     @DisplayName("趋势接口 - 缓存命中时直接返回")
     void trend_cacheHit() {
         // 模拟缓存命中
-        String cachedJson = "[{\"time\":\"2025-01-01 10:00\",\"count\":30}]";
+        String cachedJson = "[{\"time_bucket\":\"2025-01-01 10:00\",\"request_count\":30,\"avg_cost_ms\":1500.0,\"fail_count\":3}]";
         when(cacheService.get(anyString())).thenReturn(cachedJson);
 
         // 执行测试
@@ -285,7 +287,8 @@ class DashboardControllerTest {
     void errorRanking_success() {
         List<Map<String, Object>> errorData = new ArrayList<>();
         Map<String, Object> item = new HashMap<>();
-        item.put("errorMessage", "超时");
+        item.put("error_message", "超时");
+        item.put("agent_id", "agent-001");
         item.put("count", 10);
         errorData.add(item);
         when(dashboardService.getErrorRanking(anyString(), anyString()))
@@ -298,7 +301,7 @@ class DashboardControllerTest {
         assertEquals("0000", response.getCode());
         assertNotNull(response.getData());
         assertEquals(1, response.getData().size());
-        assertEquals("超时", response.getData().get(0).get("errorMessage"));
+        assertEquals("超时", response.getData().get(0).get("error_message"));
         verify(dashboardService, times(1)).getErrorRanking(anyString(), anyString());
     }
 

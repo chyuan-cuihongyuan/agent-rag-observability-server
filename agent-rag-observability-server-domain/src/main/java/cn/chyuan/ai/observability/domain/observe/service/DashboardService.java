@@ -47,7 +47,8 @@ public class DashboardService {
             for (Map<String, Object> bucket : stats) {
                 long count = Long.parseLong(bucket.getOrDefault("count", "0").toString());
                 totalCount += count;
-                if ("1".equals(bucket.getOrDefault("emptyRetrieval", "0").toString())) {
+                Object emptyVal = bucket.get("emptyRetrieval");
+                if (emptyVal != null && "1".equals(emptyVal.toString())) {
                     emptyCount = count;
                 }
             }
@@ -72,6 +73,6 @@ public class DashboardService {
     }
 
     public List<Map<String, Object>> getErrorRanking(String startTime, String endTime) {
-        return agentDecisionRepository.statByStatus(startTime, endTime);
+        return agentDecisionRepository.statErrorRanking(startTime, endTime);
     }
 }

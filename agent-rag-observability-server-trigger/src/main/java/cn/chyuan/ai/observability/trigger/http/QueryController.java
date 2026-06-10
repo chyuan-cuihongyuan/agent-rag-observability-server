@@ -50,8 +50,10 @@ public class QueryController {
                         toolCalls.stream()
                                 .map(tc -> JSON.parseObject(JSON.toJSONString(tc)))
                                 .collect(Collectors.toList()) : null)
-                .memoryRecall(memoryRecalls != null && !memoryRecalls.isEmpty() ?
-                        JSON.parseObject(JSON.toJSONString(memoryRecalls.get(0))) : null)
+                .memoryRecalls(memoryRecalls != null && !memoryRecalls.isEmpty() ?
+                        memoryRecalls.stream()
+                                .map(mr -> JSON.parseObject(JSON.toJSONString(mr)))
+                                .collect(Collectors.toList()) : null)
                 .sessionId(decision != null ? decision.getSessionId() : (retrieval != null ? retrieval.getSessionId() : ""))
                 .ownerUserId(decision != null ? decision.getOwnerUserId() : "")
                 .sourceService(decision != null ? decision.getSourceService() : "")

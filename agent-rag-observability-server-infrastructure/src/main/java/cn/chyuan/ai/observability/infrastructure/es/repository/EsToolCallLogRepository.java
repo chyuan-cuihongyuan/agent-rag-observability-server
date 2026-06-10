@@ -14,6 +14,7 @@ import org.springframework.stereotype.Repository;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
@@ -41,7 +42,9 @@ public class EsToolCallLogRepository implements IToolCallLogRepository {
     public void save(ToolCallLogEntity entity) {
         try {
             String indexName = INDEX_PREFIX + "-" + entity.getCreateTime().substring(0, 7).replace("-", ".");
-            esBulkIndexService.index(indexName, entity.getTraceId() + "_" + entity.getSpanId(), entity);
+            // 文档 ID：traceId + spanId，spanId 为空时使用序号避免覆盖
+            String docId = entity.getTraceId() + "_" + (entity.getSpanId() != null ? entity.getSpanId() : UUID.randomUUID());
+            esBulkIndexService.index(indexName, docId, entity);
         } catch (Exception e) {
             log.error("ES save tool call log error, traceId={}", entity.getTraceId(), e);
             observeMetrics.recordWriteFailure("es");

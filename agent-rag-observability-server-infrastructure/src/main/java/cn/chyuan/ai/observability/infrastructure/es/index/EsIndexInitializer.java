@@ -57,8 +57,6 @@ public class EsIndexInitializer implements CommandLineRunner {
                     .name(templateName)
                     .withJson(new java.io.StringReader(templateJson)));
             log.info("ES index template {} created (pattern: {})", templateName, indexPattern);
-        } catch (ElasticsearchException e) {
-            log.warn("Failed to create ES index template {}: {}", templateName, e.getMessage());
         } catch (Exception e) {
             log.warn("Failed to create ES index template {}: {}", templateName, e.getMessage());
         }

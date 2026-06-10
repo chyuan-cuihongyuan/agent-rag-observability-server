@@ -11,4 +11,10 @@ public interface ICachePort {
      * @param type 数据类型（如 agent_decision / rag_retrieval / chat_result）
      */
     void increment(String type);
+
+    /**
+     * 删除指定缓存键
+     * @param key 缓存键（不含前缀）
+     */
+    void delete(String key);
 }

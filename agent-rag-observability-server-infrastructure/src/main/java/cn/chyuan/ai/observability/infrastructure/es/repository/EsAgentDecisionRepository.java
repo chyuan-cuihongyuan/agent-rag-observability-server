@@ -155,14 +155,17 @@ public class EsAgentDecisionRepository implements IAgentDecisionRepository {
         }
     }
 
+    /** 应用层聚合最大查询文档数，避免硬编码截断 */
+    private static final int MAX_AGGREGATION_SIZE = 10000;
+
     @Override
     public List<Map<String, Object>> statByToolUsage(String startTime, String endTime) {
         try {
             // selectedToolList 是 object 类型，无法直接 ES terms 聚合
-            // 从 ES 查询最近 500 条记录的 selectedToolList 字段，应用层解析计数
+            // 从 ES 查询记录的 selectedToolList 字段，应用层解析计数
             SearchResponse<Map> response = esClient.search(s -> s
                     .index(INDEX_PREFIX + "*")
-                    .size(500)
+                    .size(MAX_AGGREGATION_SIZE)
                     .source(src -> src.filter(f -> f.includes("selectedToolList")))
                     .query(q -> q.range(r -> r.field("createTime")
                             .gte(co.elastic.clients.json.JsonData.of(startTime))
@@ -187,8 +190,9 @@ public class EsAgentDecisionRepository implements IAgentDecisionRepository {
                                 toolCountMap.merge(toolName, 1L, Long::sum);
                             }
                         }
-                    } catch (Exception ignored) {
-                        // 非 JSON 数组格式，跳过
+                    } catch (Exception e) {
+                        // 非 JSON 数组格式，记录后跳过
+                        log.debug("selectedToolList JSON 解析失败: {}", e.getMessage());
                     }
                 } else if (toolListObj instanceof List<?> tools) {
                     for (Object tool : tools) {
@@ -216,20 +220,48 @@ public class EsAgentDecisionRepository implements IAgentDecisionRepository {
     }
 
     @Override
-    public List<Map<String, Object>> statByStatus(String startTime, String endTime) {
+    public List<Map<String, Object>> statErrorRanking(String startTime, String endTime) {
         try {
-            SearchResponse<Void> response = esClient.search(s -> s
+            // 查询失败状态的记录，获取错误消息和 Agent ID
+            SearchResponse<Map> response = esClient.search(s -> s
                     .index(INDEX_PREFIX + "*")
-                    .size(0)
-                    .query(q -> q.range(r -> r.field("createTime").gte(co.elastic.clients.json.JsonData.of(startTime)).lte(co.elastic.clients.json.JsonData.of(endTime))))
-                    .aggregations("by_status", a -> a.terms(t -> t.field("agentStatus").size(10))),
-                    Void.class);
-            List<Map<String, Object>> result = new ArrayList<>();
-            response.aggregations().get("by_status").sterms().buckets().array().forEach(b ->
-                    result.add(Map.of("agentStatus", b.key().stringValue(), "count", b.docCount())));
-            return result;
+                    .size(MAX_AGGREGATION_SIZE)
+                    .source(src -> src.filter(f -> f.includes("errorMessage", "agentId")))
+                    .query(q -> q.bool(b -> b
+                            .must(m -> m.range(r -> r.field("createTime")
+                                    .gte(co.elastic.clients.json.JsonData.of(startTime))
+                                    .lte(co.elastic.clients.json.JsonData.of(endTime))))
+                            .must(m -> m.term(t -> t.field("agentStatus").value("FAIL")))))
+                    .sort(so -> so.field(f -> f.field("createTime").order(co.elastic.clients.elasticsearch._types.SortOrder.Desc))),
+                    Map.class);
+
+            // 应用层按错误消息分组计数
+            Map<String, Map<String, Object>> errorMap = new LinkedHashMap<>();
+            for (Hit<Map> hit : response.hits().hits()) {
+                Map source = hit.source();
+                if (source == null) continue;
+                String errorMsg = source.get("errorMessage") != null ? source.get("errorMessage").toString() : "未知错误";
+                String agentId = source.get("agentId") != null ? source.get("agentId").toString() : "-";
+
+                if (!errorMap.containsKey(errorMsg)) {
+                    Map<String, Object> item = new HashMap<>();
+                    item.put("error_message", errorMsg);
+                    item.put("agent_id", agentId);
+                    item.put("count", 1L);
+                    errorMap.put(errorMsg, item);
+                } else {
+                    Map<String, Object> item = errorMap.get(errorMsg);
+                    item.put("count", (Long) item.get("count") + 1);
+                }
+            }
+
+            // 按计数降序排列，取前 10
+            return errorMap.values().stream()
+                    .sorted((a, b) -> Long.compare((Long) b.get("count"), (Long) a.get("count")))
+                    .limit(10)
+                    .collect(Collectors.toList());
         } catch (Exception e) {
-            log.error("ES stat status error", e);
+            log.error("ES stat error ranking error", e);
             return Collections.emptyList();
         }
     }

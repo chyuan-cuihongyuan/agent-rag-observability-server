@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.io.Serializable;
+import java.util.List;
 
 /**
  * 记忆检索追踪实体
@@ -19,8 +20,10 @@ public class MemoryRecallLogEntity implements Serializable {
     private String queryText;
     private Integer sessionMemoryCount;
     private Integer agentMemoryCount;
-    private String sessionMemoryScores;
-    private String agentMemoryScores;
+    /** 会话级记忆相似度分数列表 */
+    private List<Double> sessionMemoryScores;
+    /** Agent 级记忆相似度分数列表 */
+    private List<Double> agentMemoryScores;
     private String injectContent;
     private Integer costTimeMs;
     private String createTime;

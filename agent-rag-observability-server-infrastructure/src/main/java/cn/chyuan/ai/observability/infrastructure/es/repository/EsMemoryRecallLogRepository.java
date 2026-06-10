@@ -55,7 +55,7 @@ public class EsMemoryRecallLogRepository implements IMemoryRecallLogRepository {
             SearchResponse<MemoryRecallLogEntity> response = esClient.search(s -> s
                     .index(INDEX_PREFIX + "*")
                     .query(q -> q.term(t -> t.field("traceId").value(traceId)))
-                    .size(1),
+                    .size(100),
                     MemoryRecallLogEntity.class);
             return response.hits().hits().stream().map(Hit::source).collect(Collectors.toList());
         } catch (Exception e) {

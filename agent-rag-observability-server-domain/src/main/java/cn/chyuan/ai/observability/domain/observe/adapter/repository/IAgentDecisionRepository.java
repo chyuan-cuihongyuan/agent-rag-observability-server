@@ -14,5 +14,5 @@ public interface IAgentDecisionRepository {
     long countByCondition(Map<String, Object> condition);
     List<Map<String, Object>> statByBranchType(String startTime, String endTime);
     List<Map<String, Object>> statByToolUsage(String startTime, String endTime);
-    List<Map<String, Object>> statByStatus(String startTime, String endTime);
+    List<Map<String, Object>> statErrorRanking(String startTime, String endTime);
 }

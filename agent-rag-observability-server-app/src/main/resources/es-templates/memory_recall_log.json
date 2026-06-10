@@ -10,8 +10,8 @@
       "queryText": {"type": "text", "analyzer": "ik_max_word"},
       "sessionMemoryCount": {"type": "integer"},
       "agentMemoryCount": {"type": "integer"},
-      "sessionMemoryScores": {"type": "object", "enabled": true},
-      "agentMemoryScores": {"type": "object", "enabled": true},
+      "sessionMemoryScores": {"type": "double"},
+      "agentMemoryScores": {"type": "double"},
       "injectContent": {"type": "text", "analyzer": "ik_max_word"},
       "costTimeMs": {"type": "integer"},
       "createTime": {"type": "date", "format": "yyyy-MM-dd HH:mm:ss"}

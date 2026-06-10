@@ -16,11 +16,11 @@
       "rewriteText": {"type": "text", "analyzer": "ik_max_word"},
       "retrievalTopk": {"type": "integer"},
       "retrievalCount": {"type": "integer"},
-      "sourceDocs": {"type": "object", "enabled": true},
-      "rerankScores": {"type": "object", "enabled": true},
+      "sourceDocs": {"type": "keyword"},
+      "rerankScores": {"type": "keyword"},
       "emptyRetrieval": {"type": "integer"},
       "retrievalCostMs": {"type": "integer"},
-      "retrievalStages": {"type": "object", "enabled": true},
+      "retrievalStages": {"type": "keyword"},
       "ragStrategyVersion": {"type": "keyword"},
       "createTime": {"type": "date", "format": "yyyy-MM-dd HH:mm:ss"}
     }

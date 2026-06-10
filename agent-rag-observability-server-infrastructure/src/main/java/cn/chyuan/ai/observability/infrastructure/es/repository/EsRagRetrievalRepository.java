@@ -74,8 +74,9 @@ public class EsRagRetrievalRepository implements IRagRetrievalRepository {
                     .aggregations("by_empty", a -> a.terms(t -> t.field("emptyRetrieval").size(2))),
                     Void.class);
             List<Map<String, Object>> result = new ArrayList<>();
-            response.aggregations().get("by_empty").sterms().buckets().array().forEach(b ->
-                    result.add(Map.of("emptyRetrieval", b.key().stringValue(), "count", b.docCount())));
+            // emptyRetrieval 字段为 integer 类型，使用 lterms() 获取 LongTerms 聚合结果
+            response.aggregations().get("by_empty").lterms().buckets().array().forEach(b ->
+                    result.add(Map.of("emptyRetrieval", String.valueOf(b.key()), "count", b.docCount())));
             return result;
         } catch (Exception e) {
             log.error("ES stat empty retrieval error", e);

@@ -86,12 +86,44 @@ public class EsChatResultRepository implements IChatResultRepository {
                     .index(INDEX_PREFIX + "*")
                     .size(0)
                     .query(q -> q.range(r -> r.field("createTime").gte(co.elastic.clients.json.JsonData.of(startTime)).lte(co.elastic.clients.json.JsonData.of(endTime))))
-                    .aggregations("trend", a -> a.dateHistogram(dh -> dh.field("createTime")
-                            .fixedInterval(Time.of(t -> t.time("hour".equals(interval) ? "1h" : "1d"))))),
+                    .aggregations("trend", a -> a
+                            .dateHistogram(dh -> dh.field("createTime")
+                                    .fixedInterval(Time.of(t -> t.time("hour".equals(interval) ? "1h" : "1d"))))
+                            // 子聚合：平均耗时
+                            .aggregations("avg_cost", sa -> sa.avg(av -> av.field("totalCostTimeMs")))
+                            // 子聚合：失败数量
+                            .aggregations("fail_filter", sa -> sa.filter(f -> f.term(t -> t.field("finalStatus").value("FAIL"))))),
                     Void.class);
             List<Map<String, Object>> result = new ArrayList<>();
-            response.aggregations().get("trend").dateHistogram().buckets().array().forEach(b ->
-                    result.add(Map.of("time", b.keyAsString(), "count", b.docCount())));
+            response.aggregations().get("trend").dateHistogram().buckets().array().forEach(b -> {
+                // 提取子聚合结果
+                double avgCost = 0;
+                long failCount = 0;
+                try {
+                    var avgAgg = b.aggregations().get("avg_cost");
+                    if (avgAgg != null && avgAgg.avg() != null) {
+                        avgCost = avgAgg.avg().value();
+                        if (Double.isNaN(avgCost) || Double.isInfinite(avgCost)) avgCost = 0;
+                    }
+                } catch (Exception e) {
+                    log.debug("提取 avg_cost 子聚合失败: {}", e.getMessage());
+                }
+                try {
+                    var failAgg = b.aggregations().get("fail_filter");
+                    if (failAgg != null && failAgg.filter() != null) {
+                        failCount = failAgg.filter().docCount();
+                    }
+                } catch (Exception e) {
+                    log.debug("提取 fail_filter 子聚合失败: {}", e.getMessage());
+                }
+
+                Map<String, Object> item = new HashMap<>();
+                item.put("time_bucket", b.keyAsString());
+                item.put("request_count", b.docCount());
+                item.put("avg_cost_ms", Math.round(avgCost * 100.0) / 100.0);
+                item.put("fail_count", failCount);
+                result.add(item);
+            });
             return result;
         } catch (Exception e) {
             log.error("ES stat trend error", e);

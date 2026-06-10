@@ -37,7 +37,7 @@ public class OnlineReplayAnswerProvider implements IAnswerSourceProvider {
     public OnlineReplayAnswerProvider() {
         this.httpClient = new OkHttpClient.Builder()
                 .connectTimeout(30, TimeUnit.SECONDS)
-                .readTimeout(30, TimeUnit.SECONDS)
+                .readTimeout(600, TimeUnit.SECONDS)
                 .writeTimeout(30, TimeUnit.SECONDS)
                 .build();
     }

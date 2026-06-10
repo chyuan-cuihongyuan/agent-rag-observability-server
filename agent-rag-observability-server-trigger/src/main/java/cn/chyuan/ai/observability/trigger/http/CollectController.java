@@ -4,6 +4,7 @@ import cn.chyuan.ai.observability.api.dto.collect.*;
 import cn.chyuan.ai.observability.domain.observe.model.entity.*;
 import cn.chyuan.ai.observability.domain.observe.service.ObserveCollectService;
 import cn.chyuan.ai.observability.types.response.Response;
+import com.alibaba.fastjson.JSON;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
@@ -85,8 +86,8 @@ public class CollectController {
                 .traceId(dto.getTraceId()).queryText(dto.getQueryText())
                 .sessionMemoryCount(dto.getSessionMemoryCount())
                 .agentMemoryCount(dto.getAgentMemoryCount())
-                .sessionMemoryScores(dto.getSessionMemoryScores())
-                .agentMemoryScores(dto.getAgentMemoryScores())
+                .sessionMemoryScores(parseDoubleList(dto.getSessionMemoryScores()))
+                .agentMemoryScores(parseDoubleList(dto.getAgentMemoryScores()))
                 .injectContent(dto.getInjectContent()).costTimeMs(dto.getCostTimeMs())
                 .createTime(dto.getCreateTime()).build();
         observeCollectService.collectMemoryRecallLog(entity);
@@ -95,6 +96,42 @@ public class CollectController {
 
     @PostMapping("/batch")
     public Response<String> collectBatch(@RequestBody ObserveBatchDTO dto) {
+        // 校验同一 batch 内所有子 DTO 的 traceId 一致性
+        String batchTraceId = dto.getAgentDecision() != null ? dto.getAgentDecision().getTraceId() : null;
+        if (batchTraceId == null && dto.getRagRetrieval() != null) {
+            batchTraceId = dto.getRagRetrieval().getTraceId();
+        }
+        if (batchTraceId == null && dto.getChatResult() != null) {
+            batchTraceId = dto.getChatResult().getTraceId();
+        }
+        if (batchTraceId != null) {
+            String finalBatchTraceId = batchTraceId;
+            if (dto.getRagRetrieval() != null && !finalBatchTraceId.equals(dto.getRagRetrieval().getTraceId())) {
+                return Response.fail(cn.chyuan.ai.observability.types.response.ResponseCode.ILLEGAL_PARAMETER,
+                        "batch 请求中各子 DTO 的 traceId 不一致");
+            }
+            if (dto.getChatResult() != null && !finalBatchTraceId.equals(dto.getChatResult().getTraceId())) {
+                return Response.fail(cn.chyuan.ai.observability.types.response.ResponseCode.ILLEGAL_PARAMETER,
+                        "batch 请求中各子 DTO 的 traceId 不一致");
+            }
+            if (dto.getToolCalls() != null) {
+                for (ToolCallLogDTO t : dto.getToolCalls()) {
+                    if (!finalBatchTraceId.equals(t.getTraceId())) {
+                        return Response.fail(cn.chyuan.ai.observability.types.response.ResponseCode.ILLEGAL_PARAMETER,
+                                "batch 请求中各子 DTO 的 traceId 不一致");
+                    }
+                }
+            }
+            if (dto.getMemoryRecalls() != null) {
+                for (MemoryRecallLogDTO m : dto.getMemoryRecalls()) {
+                    if (!finalBatchTraceId.equals(m.getTraceId())) {
+                        return Response.fail(cn.chyuan.ai.observability.types.response.ResponseCode.ILLEGAL_PARAMETER,
+                                "batch 请求中各子 DTO 的 traceId 不一致");
+                    }
+                }
+            }
+        }
+
         if (dto.getAgentDecision() != null) {
             AgentDecisionDTO a = dto.getAgentDecision();
             observeCollectService.collectAgentDecision(AgentDecisionEntity.builder()
@@ -150,12 +187,26 @@ public class CollectController {
                         .traceId(m.getTraceId()).queryText(m.getQueryText())
                         .sessionMemoryCount(m.getSessionMemoryCount())
                         .agentMemoryCount(m.getAgentMemoryCount())
-                        .sessionMemoryScores(m.getSessionMemoryScores())
-                        .agentMemoryScores(m.getAgentMemoryScores())
+                        .sessionMemoryScores(parseDoubleList(m.getSessionMemoryScores()))
+                        .agentMemoryScores(parseDoubleList(m.getAgentMemoryScores()))
                         .injectContent(m.getInjectContent()).costTimeMs(m.getCostTimeMs())
                         .createTime(m.getCreateTime()).build());
             }
         }
         return Response.success("ok");
+    }
+
+    /**
+     * 将 JSON 字符串格式的分数列表解析为 List<Double>
+     * DTO 外部传入 String（如 "[0.9,0.8]"），Entity 内部使用 List<Double>
+     */
+    @SuppressWarnings("unchecked")
+    private static java.util.List<Double> parseDoubleList(String json) {
+        if (json == null || json.isBlank()) return null;
+        try {
+            return JSON.parseArray(json, Double.class);
+        } catch (Exception e) {
+            return null;
+        }
     }
 }
