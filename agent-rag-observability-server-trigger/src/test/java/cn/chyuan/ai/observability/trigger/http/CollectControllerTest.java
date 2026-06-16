@@ -13,7 +13,8 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -161,6 +162,7 @@ class CollectControllerTest {
     @Test
     @DisplayName("批量采集 - 三种数据同时提交成功")
     void collectBatch_allThreeTypes() {
+        // 同一 batch 内三类数据描述同一条 trace，traceId 必须一致（控制器会校验）
         AgentDecisionDTO agentDTO = AgentDecisionDTO.builder()
                 .traceId("trace-batch-001").sourceService("svc")
                 .sessionId("session-batch").agentId("agent-001")
@@ -168,13 +170,13 @@ class CollectControllerTest {
                 .build();
 
         RagRetrievalDTO ragDTO = RagRetrievalDTO.builder()
-                .traceId("trace-batch-002").sourceService("svc")
+                .traceId("trace-batch-001").sourceService("svc")
                 .sessionId("session-batch").agentId("agent-001")
                 .queryText("查询文本").retrievalCount(3)
                 .build();
 
         ChatResultDTO chatDTO = ChatResultDTO.builder()
-                .traceId("trace-batch-003").sourceService("svc")
+                .traceId("trace-batch-001").sourceService("svc")
                 .sessionId("session-batch").agentId("agent-001")
                 .question("问题").answer("答案")
                 .build();
