@@ -4,34 +4,54 @@
 
     <insert id="insert" parameterType="cn.chyuan.ai.observability.infrastructure.dao.po.EvalResultPO" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO eval_result (task_id, trace_id, query_text, standard_answer, actual_answer,
-                                recall_score, precision_score, f1_score, top3_hit_rate, answer_similarity,
+                                recall_score, precision_score, f1_score, top3_hit_rate,
+                                mrr_score, ndcg_score, map_score, answer_similarity,
+                                context_precision, context_recall, context_relevance,
                                 faithfulness_score, relevance_score, hallucination_flag, completeness_score,
-                                overall_score, eval_detail, create_time)
+                                answer_correctness, overall_score, eval_detail, create_time,
+                                tool_selection_score, tool_param_score, tool_call_score,
+                                intent_score, branch_score, reasoning_score, agent_decision_score)
         VALUES (#{taskId}, #{traceId}, #{queryText}, #{standardAnswer}, #{actualAnswer},
-                #{recallScore}, #{precisionScore}, #{f1Score}, #{top3HitRate}, #{answerSimilarity},
+                #{recallScore}, #{precisionScore}, #{f1Score}, #{top3HitRate},
+                #{mrrScore}, #{ndcgScore}, #{mapScore}, #{answerSimilarity},
+                #{contextPrecision}, #{contextRecall}, #{contextRelevance},
                 #{faithfulnessScore}, #{relevanceScore}, #{hallucinationFlag}, #{completenessScore},
-                #{overallScore}, #{evalDetail}, #{createTime})
+                #{answerCorrectness}, #{overallScore}, #{evalDetail}, #{createTime},
+                #{toolSelectionScore}, #{toolParamScore}, #{toolCallScore},
+                #{intentScore}, #{branchScore}, #{reasoningScore}, #{agentDecisionScore})
     </insert>
 
     <insert id="batchInsert">
         INSERT INTO eval_result (task_id, trace_id, query_text, standard_answer, actual_answer,
-                                recall_score, precision_score, f1_score, top3_hit_rate, answer_similarity,
+                                recall_score, precision_score, f1_score, top3_hit_rate,
+                                mrr_score, ndcg_score, map_score, answer_similarity,
+                                context_precision, context_recall, context_relevance,
                                 faithfulness_score, relevance_score, hallucination_flag, completeness_score,
-                                overall_score, eval_detail, create_time)
+                                answer_correctness, overall_score, eval_detail, create_time,
+                                tool_selection_score, tool_param_score, tool_call_score,
+                                intent_score, branch_score, reasoning_score, agent_decision_score)
         VALUES
         <foreach collection="list" item="item" separator=",">
             (#{item.taskId}, #{item.traceId}, #{item.queryText}, #{item.standardAnswer}, #{item.actualAnswer},
-             #{item.recallScore}, #{item.precisionScore}, #{item.f1Score}, #{item.top3HitRate}, #{item.answerSimilarity},
+             #{item.recallScore}, #{item.precisionScore}, #{item.f1Score}, #{item.top3HitRate},
+             #{item.mrrScore}, #{item.ndcgScore}, #{item.mapScore}, #{item.answerSimilarity},
+             #{item.contextPrecision}, #{item.contextRecall}, #{item.contextRelevance},
              #{item.faithfulnessScore}, #{item.relevanceScore}, #{item.hallucinationFlag}, #{item.completenessScore},
-             #{item.overallScore}, #{item.evalDetail}, #{item.createTime})
+             #{item.answerCorrectness}, #{item.overallScore}, #{item.evalDetail}, #{item.createTime},
+             #{item.toolSelectionScore}, #{item.toolParamScore}, #{item.toolCallScore},
+             #{item.intentScore}, #{item.branchScore}, #{item.reasoningScore}, #{item.agentDecisionScore})
         </foreach>
     </insert>
 
     <select id="selectByTaskId" resultType="cn.chyuan.ai.observability.infrastructure.dao.po.EvalResultPO">
         SELECT id, task_id, trace_id, query_text, standard_answer, actual_answer,
-               recall_score, precision_score, f1_score, top3_hit_rate, answer_similarity,
+               recall_score, precision_score, f1_score, top3_hit_rate,
+               mrr_score, ndcg_score, map_score, answer_similarity,
+               context_precision, context_recall, context_relevance,
                faithfulness_score, relevance_score, hallucination_flag, completeness_score,
-               overall_score, eval_detail, create_time
+               answer_correctness, overall_score, eval_detail, create_time,
+               tool_selection_score, tool_param_score, tool_call_score,
+               intent_score, branch_score, reasoning_score, agent_decision_score
         FROM eval_result WHERE task_id = #{taskId} ORDER BY create_time DESC LIMIT #{offset}, #{size}
     </select>
 

@@ -35,6 +35,11 @@ public class EvalTaskRepository implements IEvalTaskRepository {
     }
 
     @Override
+    public List<EvalTaskEntity> queryRecentCompleted(int limit) {
+        return evalTaskMapper.selectRecentCompleted(limit).stream().map(this::toEntity).collect(Collectors.toList());
+    }
+
+    @Override
     public void updateStatus(String taskId, String status) {
         evalTaskMapper.updateStatus(taskId, status);
     }

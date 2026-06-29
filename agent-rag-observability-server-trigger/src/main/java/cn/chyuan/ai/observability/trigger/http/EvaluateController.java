@@ -105,10 +105,20 @@ public class EvaluateController {
                 .queryText(dto.getQueryText()).standardAnswer(dto.getStandardAnswer())
                 .actualAnswer(dto.getActualAnswer()).recallScore(dto.getRecallScore())
                 .precisionScore(dto.getPrecisionScore()).f1Score(dto.getF1Score())
-                .top3HitRate(dto.getTop3HitRate()).answerSimilarity(dto.getAnswerSimilarity())
+                .top3HitRate(dto.getTop3HitRate()).mrrScore(dto.getMrrScore())
+                .ndcgScore(dto.getNdcgScore()).mapScore(dto.getMapScore())
+                .answerSimilarity(dto.getAnswerSimilarity())
+                .contextPrecision(dto.getContextPrecision()).contextRecall(dto.getContextRecall())
+                .contextRelevance(dto.getContextRelevance())
                 .faithfulnessScore(dto.getFaithfulnessScore()).relevanceScore(dto.getRelevanceScore())
                 .hallucinationFlag(dto.getHallucinationFlag()).completenessScore(dto.getCompletenessScore())
-                .overallScore(dto.getOverallScore()).evalDetail(dto.getEvalDetail()).build();
+                .answerCorrectness(dto.getAnswerCorrectness())
+                .overallScore(dto.getOverallScore()).evalDetail(dto.getEvalDetail())
+                .toolSelectionScore(dto.getToolSelectionScore()).toolParamScore(dto.getToolParamScore())
+                .toolCallScore(dto.getToolCallScore())
+                .intentScore(dto.getIntentScore()).branchScore(dto.getBranchScore())
+                .reasoningScore(dto.getReasoningScore()).agentDecisionScore(dto.getAgentDecisionScore())
+                .build();
         evaluateService.saveResult(entity);
         return Response.success("ok");
     }
@@ -151,5 +161,17 @@ public class EvaluateController {
             return Response.fail(ResponseCode.ILLEGAL_PARAMETER, validationError);
         }
         return Response.success(evaluateService.compareResults(task1, task2));
+    }
+
+    /**
+     * 全局质量概览 — 聚合最近完成的评测任务，返回加权质量均值。
+     * 供主页仪表盘「RAG 质量概览」面板使用。
+     */
+    @GetMapping("/quality_overview")
+    public Response<Map<String, Object>> qualityOverview(
+            @RequestParam(defaultValue = "10") int limit) {
+        // limit 限制在合理范围，避免全表扫描
+        int safeLimit = Math.max(1, Math.min(limit, 50));
+        return Response.success(evaluateService.computeGlobalAverages(safeLimit));
     }
 }

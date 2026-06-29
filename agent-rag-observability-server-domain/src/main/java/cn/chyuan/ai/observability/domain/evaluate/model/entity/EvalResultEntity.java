@@ -22,11 +22,18 @@ public class EvalResultEntity implements Serializable {
     private Double precisionScore;
     private Double f1Score;
     private Double top3HitRate;
+    private Double mrrScore;
+    private Double ndcgScore;
+    private Double mapScore;
     private Double answerSimilarity;
+    private Double contextPrecision;
+    private Double contextRecall;
+    private Double contextRelevance;
     private Double faithfulnessScore;
     private Double relevanceScore;
     private Integer hallucinationFlag;
     private Double completenessScore;
+    private Double answerCorrectness;
     private Double overallScore;
     private String evalDetail;
     private String createTime;

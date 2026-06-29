@@ -21,6 +21,12 @@
         FROM eval_task ORDER BY create_time DESC LIMIT #{offset}, #{size}
     </select>
 
+    <select id="selectRecentCompleted" resultType="cn.chyuan.ai.observability.infrastructure.dao.po.EvalTaskPO">
+        SELECT id, task_id, task_name, eval_type, dataset_id, status, total_count, completed_count,
+               model_version, rag_strategy_version, avg_overall_score, create_time, update_time
+        FROM eval_task WHERE status = 'COMPLETED' ORDER BY update_time DESC LIMIT #{limit}
+    </select>
+
     <update id="updateStatus">
         UPDATE eval_task SET status = #{status}, update_time = NOW() WHERE task_id = #{taskId}
     </update>

@@ -116,10 +116,79 @@ public class EvaluateService {
     }
 
     /**
+     * 全局质量聚合 — 取最近 N 个 COMPLETED 任务，按样本数加权计算质量均值。
+     * 用于主页仪表盘「RAG 质量概览」面板。
+     *
+     * @param limit 取最近多少个完成任务（默认 10）
+     * @return 质量均值 + taskCount/sampleCount/updateTime；无数据时各值为 0
+     */
+    public Map<String, Object> computeGlobalAverages(int limit) {
+        List<EvalTaskEntity> recent = evalTaskRepository.queryRecentCompleted(limit);
+        Map<String, Object> map = new HashMap<>();
+
+        if (recent.isEmpty()) {
+            map.put("taskCount", 0);
+            map.put("sampleCount", 0);
+            return map;
+        }
+
+        // 按样本数加权累加：每个任务的指标 × 样本数，最后除以总样本数
+        long totalSamples = 0;
+        double wOverall = 0, wRecall = 0, wFaith = 0, wPrecision = 0, wMrr = 0, wNdcg = 0;
+        double wCtxP = 0, wCtxR = 0, wCtxRel = 0, wCorrect = 0;
+        String latestUpdateTime = "";
+
+        for (EvalTaskEntity task : recent) {
+            TaskAverages avg = computeTaskAverages(task.getTaskId());
+            long c = avg.count;
+            if (c <= 0) continue;
+            totalSamples += c;
+            wOverall += avg.avgOverall * c;
+            wRecall += avg.avgRecall * c;
+            wFaith += avg.avgFaith * c;
+            wPrecision += avg.avgPrecision * c;
+            wMrr += avg.avgMrr * c;
+            wNdcg += avg.avgNdcg * c;
+            wCtxP += avg.avgContextPrecision * c;
+            wCtxR += avg.avgContextRecall * c;
+            wCtxRel += avg.avgContextRelevance * c;
+            wCorrect += avg.avgAnswerCorrectness * c;
+            // 取最新的 updateTime（任务已按 update_time 降序，第一个即最新）
+            if (latestUpdateTime.isEmpty()) {
+                latestUpdateTime = task.getUpdateTime() == null ? "" : task.getUpdateTime();
+            }
+        }
+
+        if (totalSamples > 0) {
+            map.put("avgOverallScore", round(wOverall / totalSamples));
+            map.put("avgRecallScore", round(wRecall / totalSamples));
+            map.put("avgFaithfulnessScore", round(wFaith / totalSamples));
+            map.put("avgPrecisionScore", round(wPrecision / totalSamples));
+            map.put("avgMrrScore", round(wMrr / totalSamples));
+            map.put("avgNdcgScore", round(wNdcg / totalSamples));
+            map.put("avgContextPrecision", round(wCtxP / totalSamples));
+            map.put("avgContextRecall", round(wCtxR / totalSamples));
+            map.put("avgContextRelevance", round(wCtxRel / totalSamples));
+            map.put("avgAnswerCorrectness", round(wCorrect / totalSamples));
+        }
+        map.put("taskCount", recent.size());
+        map.put("sampleCount", totalSamples);
+        map.put("updateTime", latestUpdateTime);
+        return map;
+    }
+
+    private double round(double v) {
+        return Math.round(v * 10000.0) / 10000.0;
+    }
+
+    /**
      * 分页查询全部结果并计算平均值，避免硬编码只取前 100 条
      */
     private TaskAverages computeTaskAverages(String taskId) {
         double sumOverall = 0, sumRecall = 0, sumFaith = 0;
+        double sumPrecision = 0, sumMrr = 0, sumNdcg = 0;
+        double sumContextPrecision = 0, sumContextRecall = 0, sumContextRelevance = 0;
+        double sumAnswerCorrectness = 0;
         int count = 0;
         int page = 1;
         int pageSize = 500;
@@ -128,20 +197,42 @@ public class EvaluateService {
         do {
             batch = evalResultRepository.queryByTaskId(taskId, page, pageSize);
             for (EvalResultEntity r : batch) {
-                sumOverall += (r.getOverallScore() != null ? r.getOverallScore() : 0);
-                sumRecall += (r.getRecallScore() != null ? r.getRecallScore() : 0);
-                sumFaith += (r.getFaithfulnessScore() != null ? r.getFaithfulnessScore() : 0);
+                sumOverall += nz(r.getOverallScore());
+                sumRecall += nz(r.getRecallScore());
+                sumFaith += nz(r.getFaithfulnessScore());
+                sumPrecision += nz(r.getPrecisionScore());
+                sumMrr += nz(r.getMrrScore());
+                sumNdcg += nz(r.getNdcgScore());
+                sumContextPrecision += nz(r.getContextPrecision());
+                sumContextRecall += nz(r.getContextRecall());
+                sumContextRelevance += nz(r.getContextRelevance());
+                sumAnswerCorrectness += nz(r.getAnswerCorrectness());
                 count++;
             }
             page++;
         } while (batch.size() == pageSize); // 批次未满说明已读完
 
         TaskAverages avg = new TaskAverages();
-        avg.avgOverall = count > 0 ? sumOverall / count : 0;
-        avg.avgRecall = count > 0 ? sumRecall / count : 0;
-        avg.avgFaith = count > 0 ? sumFaith / count : 0;
+        if (count > 0) {
+            double c = count;
+            avg.avgOverall = sumOverall / c;
+            avg.avgRecall = sumRecall / c;
+            avg.avgFaith = sumFaith / c;
+            avg.avgPrecision = sumPrecision / c;
+            avg.avgMrr = sumMrr / c;
+            avg.avgNdcg = sumNdcg / c;
+            avg.avgContextPrecision = sumContextPrecision / c;
+            avg.avgContextRecall = sumContextRecall / c;
+            avg.avgContextRelevance = sumContextRelevance / c;
+            avg.avgAnswerCorrectness = sumAnswerCorrectness / c;
+        }
         avg.count = count;
         return avg;
+    }
+
+    /** null 视为 0，避免 NPE */
+    private double nz(Double v) {
+        return v != null ? v : 0.0;
     }
 
     private Map<String, Object> buildCompareMap(String taskId, TaskAverages avg) {
@@ -150,6 +241,13 @@ public class EvaluateService {
         map.put("avgOverallScore", avg.avgOverall);
         map.put("avgRecallScore", avg.avgRecall);
         map.put("avgFaithfulnessScore", avg.avgFaith);
+        map.put("avgPrecisionScore", avg.avgPrecision);
+        map.put("avgMrrScore", avg.avgMrr);
+        map.put("avgNdcgScore", avg.avgNdcg);
+        map.put("avgContextPrecision", avg.avgContextPrecision);
+        map.put("avgContextRecall", avg.avgContextRecall);
+        map.put("avgContextRelevance", avg.avgContextRelevance);
+        map.put("avgAnswerCorrectness", avg.avgAnswerCorrectness);
         map.put("count", avg.count);
         return map;
     }
@@ -159,6 +257,13 @@ public class EvaluateService {
         double avgOverall;
         double avgRecall;
         double avgFaith;
+        double avgPrecision;
+        double avgMrr;
+        double avgNdcg;
+        double avgContextPrecision;
+        double avgContextRecall;
+        double avgContextRelevance;
+        double avgAnswerCorrectness;
         int count;
     }
 }

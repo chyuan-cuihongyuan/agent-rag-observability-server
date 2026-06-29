@@ -11,6 +11,7 @@ public interface EvalTaskMapper {
     void insert(EvalTaskPO po);
     EvalTaskPO selectByTaskId(@Param("taskId") String taskId);
     List<EvalTaskPO> selectList(@Param("offset") int offset, @Param("size") int size);
+    List<EvalTaskPO> selectRecentCompleted(@Param("limit") int limit);
     void updateStatus(@Param("taskId") String taskId, @Param("status") String status);
     void updateProgress(@Param("taskId") String taskId, @Param("completedCount") int completedCount, @Param("avgOverallScore") Double avgOverallScore);
 }

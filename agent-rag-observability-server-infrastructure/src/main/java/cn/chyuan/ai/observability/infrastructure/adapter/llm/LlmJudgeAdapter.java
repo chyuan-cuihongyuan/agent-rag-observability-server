@@ -135,6 +135,77 @@ public class LlmJudgeAdapter implements ILlmJudgePort {
                 - "该功能于2020年发布"（参考资料未提及发布时间）
                 """;
 
+    // ===== 上下文维度 + 答案正确性 prompt（RAGAS 式，LLM-as-Judge） =====
+
+    private static final String CONTEXT_PRECISION_PROMPT_TEMPLATE = """
+                请评估检索到的每个上下文片段对回答用户问题的有用程度（上下文精确率）。
+
+                用户问题：%s
+
+                检索到的上下文片段（已编号）：
+                %s
+
+                分析要求：
+                1. 逐条判断每个编号片段是否对回答该问题相关且有用（1=相关有用, 0=无关或噪声）
+                2. 计算上下文精确率 = 相关片段数 / 总片段数
+
+                请只返回一个0-1之间的数字（相关片段占比），不要解释：
+                """;
+
+    private static final String CONTEXT_RECALL_PROMPT_TEMPLATE = """
+                请评估检索到的上下文能否支撑标准答案的每个要点（上下文召回率）。
+
+                标准答案：
+                %s
+
+                检索到的上下文：
+                %s
+
+                分析要求：
+                1. 将标准答案拆分为若干事实要点
+                2. 逐个判断每个要点能否从检索上下文中找到支撑（1=可推断, 0=无法推断）
+                3. 计算上下文召回率 = 可推断要点数 / 总要点数
+
+                请只返回一个0-1之间的数字（可推断要点占比），不要解释：
+                """;
+
+    private static final String CONTEXT_RELEVANCE_PROMPT_TEMPLATE = """
+                请评估检索到的上下文与用户问题的整体相关度（上下文相关性）。
+
+                评分标准：
+                - 1.0分：上下文完全切题，全是相关信息
+                - 0.8分：上下文大部分相关，少量冗余
+                - 0.6分：上下文部分相关，存在一定噪声
+                - 0.4分：上下文相关性较弱，多为边缘信息
+                - 0.2分：上下文基本与问题无关
+                - 0.0分：上下文完全无关
+
+                用户问题：%s
+
+                检索到的上下文：
+                %s
+
+                请只返回一个0-1之间的数字分数，不要解释：
+                """;
+
+    private static final String ANSWER_CORRECTNESS_PROMPT_TEMPLATE = """
+                请评估实际答案相对标准答案的事实正确性（答案正确性，区别于覆盖率）。
+
+                评分标准：
+                - 1.0分：实际答案事实完全正确，无任何错误陈述
+                - 0.8分：实际答案基本正确，有极少量不够严谨的表述
+                - 0.6分：实际答案部分正确，存在少量事实错误
+                - 0.4分：实际答案正确性一般，有明显事实错误
+                - 0.2分：实际答案大部分事实错误
+                - 0.0分：实际答案完全错误
+
+                标准答案：%s
+
+                实际答案：%s
+
+                请只返回一个0-1之间的数字分数，不要解释：
+                """;
+
     @Override
     public JudgeVerdict judge(String query, String standardAnswer, String actualAnswer, List<String> retrievedChunks) {
         if (!available()) {
@@ -151,6 +222,14 @@ public class LlmJudgeAdapter implements ILlmJudgePort {
             HallucinationResult hallucination = detectHallucination(actualAnswer, context);
             double completeness = evaluateCompleteness(standardAnswer, actualAnswer);
             double similarity = evaluateSimilarity(standardAnswer, actualAnswer);
+            // 答案正确性：事实层面的对错（需标准答案，无标准答案则降级为 0）
+            double answerCorrectness = (standardAnswer == null || standardAnswer.isEmpty())
+                    ? 0.0 : evaluateAnswerCorrectness(standardAnswer, actualAnswer);
+            // 上下文维度（RAGAS 式，需检索内容）
+            double contextPrecision = evaluateContextPrecision(query, retrievedChunks);
+            double contextRecall = (standardAnswer == null || standardAnswer.isEmpty())
+                    ? 0.0 : evaluateContextRecall(standardAnswer, context);
+            double contextRelevance = evaluateContextRelevance(query, context);
 
             return JudgeVerdict.builder()
                     .faithfulness(round(faithfulness))
@@ -158,6 +237,10 @@ public class LlmJudgeAdapter implements ILlmJudgePort {
                     .hallucinationRate(round(hallucination.rate))
                     .completeness(round(completeness))
                     .similarity(round(similarity))
+                    .answerCorrectness(round(answerCorrectness))
+                    .contextPrecision(round(contextPrecision))
+                    .contextRecall(round(contextRecall))
+                    .contextRelevance(round(contextRelevance))
                     .detail(String.format("幻觉检测: %s", hallucination.detail))
                     .degraded(false)
                     .build();
@@ -204,6 +287,52 @@ public class LlmJudgeAdapter implements ILlmJudgePort {
      */
     private double evaluateSimilarity(String standardAnswer, String actualAnswer) {
         String prompt = String.format(SIMILARITY_PROMPT_TEMPLATE,
+                truncate(standardAnswer, 1000), truncate(actualAnswer, 1000));
+        return callLLMForScore(prompt, 0.5);
+    }
+
+    // ===== 上下文维度 + 答案正确性评估 =====
+
+    /**
+     * 上下文精确率 — 逐条判定检索 chunk 对回答 query 是否相关（一个 prompt 批量处理，控成本）
+     */
+    private double evaluateContextPrecision(String query, List<String> chunks) {
+        if (chunks == null || chunks.isEmpty()) {
+            return 0.0;
+        }
+        StringBuilder numbered = new StringBuilder();
+        for (int i = 0; i < chunks.size(); i++) {
+            numbered.append("[").append(i + 1).append("] ")
+                    .append(truncate(chunks.get(i), 500)).append("\n");
+        }
+        String prompt = String.format(CONTEXT_PRECISION_PROMPT_TEMPLATE,
+                truncate(query, 500), truncate(numbered.toString(), 3000));
+        return callLLMForScore(prompt, 0.5);
+    }
+
+    /**
+     * 上下文召回率 — 标准答案要点能否从检索上下文推断
+     */
+    private double evaluateContextRecall(String standardAnswer, String context) {
+        String prompt = String.format(CONTEXT_RECALL_PROMPT_TEMPLATE,
+                truncate(standardAnswer, 1000), truncate(context, 3000));
+        return callLLMForScore(prompt, 0.5);
+    }
+
+    /**
+     * 上下文相关性 — 检索内容与 query 的整体相关度
+     */
+    private double evaluateContextRelevance(String query, String context) {
+        String prompt = String.format(CONTEXT_RELEVANCE_PROMPT_TEMPLATE,
+                truncate(query, 500), truncate(context, 3000));
+        return callLLMForScore(prompt, 0.5);
+    }
+
+    /**
+     * 答案正确性 — 实际答案相对标准答案的事实正确性
+     */
+    private double evaluateAnswerCorrectness(String standardAnswer, String actualAnswer) {
+        String prompt = String.format(ANSWER_CORRECTNESS_PROMPT_TEMPLATE,
                 truncate(standardAnswer, 1000), truncate(actualAnswer, 1000));
         return callLLMForScore(prompt, 0.5);
     }
@@ -287,6 +416,10 @@ public class LlmJudgeAdapter implements ILlmJudgePort {
                 .hallucinationRate(0.0)
                 .completeness(0.0)
                 .similarity(0.0)
+                .answerCorrectness(0.0)
+                .contextPrecision(0.0)
+                .contextRecall(0.0)
+                .contextRelevance(0.0)
                 .detail(reason)
                 .degraded(true)
                 .build();

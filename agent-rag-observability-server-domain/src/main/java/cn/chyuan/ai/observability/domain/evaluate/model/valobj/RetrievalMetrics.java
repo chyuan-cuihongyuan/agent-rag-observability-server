@@ -21,6 +21,12 @@ public class RetrievalMetrics {
     private double f1;
     /** Top3 命中率：前 3 条实际 chunk 命中任一标准 chunk 则为 1 */
     private double top3HitRate;
+    /** MRR 平均倒数排名：第一条命中标准 chunk 的实际 chunk 排名倒数（1/rank），无命中=0。奖励命中条排得靠前 */
+    private double mrr;
+    /** NDCG 归一化折损累计增益：位置加权检索质量（含排序感知），DCG/iDCG */
+    private double ndcg;
+    /** MAP 平均精度均值：命中位置累计 precision@k 的均值，衡量整体检索排序质量 */
+    private double map;
     /** 答案词面相似度（Jaccard），无 LLM 时作为语义相似度兜底 */
     private double answerSimilarity;
 }

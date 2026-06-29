@@ -56,6 +56,7 @@ public class QueryController {
                                 .collect(Collectors.toList()) : null)
                 .sessionId(decision != null ? decision.getSessionId() : (retrieval != null ? retrieval.getSessionId() : ""))
                 .ownerUserId(decision != null ? decision.getOwnerUserId() : "")
+                .agentId(decision != null ? decision.getAgentId() : (retrieval != null ? retrieval.getAgentId() : (chatResult != null ? chatResult.getAgentId() : "")))
                 .sourceService(decision != null ? decision.getSourceService() : "")
                 .createTime(decision != null ? decision.getCreateTime() : "")
                 .build();

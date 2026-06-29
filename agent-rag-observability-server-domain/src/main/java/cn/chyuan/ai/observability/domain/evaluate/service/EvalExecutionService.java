@@ -159,6 +159,10 @@ public class EvalExecutionService {
         double relevance = verdict == null ? 0.0 : verdict.getRelevance();
         double hallucinationRate = verdict == null ? 0.0 : verdict.getHallucinationRate();
         double completeness = verdict == null ? 0.0 : verdict.getCompleteness();
+        double answerCorrectness = verdict == null ? 0.0 : verdict.getAnswerCorrectness();
+        double contextPrecision = verdict == null ? 0.0 : verdict.getContextPrecision();
+        double contextRecall = verdict == null ? 0.0 : verdict.getContextRecall();
+        double contextRelevance = verdict == null ? 0.0 : verdict.getContextRelevance();
         // 语义相似度优先用 LLM 评判值，降级用词面相似度
         double similarity = (verdict != null && verdict.getSimilarity() > 0)
                 ? verdict.getSimilarity() : rm.getAnswerSimilarity();
@@ -188,13 +192,16 @@ public class EvalExecutionService {
             agentDecisionScore = adm.overallScore;
         }
 
-        // 5. 按评测类型加权综合分
+        // 5. 按评测类型加权综合分（纳入新增指标：mrr/ndcg/context 维度/answerCorrectness）
         double overall = computeOverall(evalType, rm, faithfulness, relevance, hallucinationRate,
-                completeness, similarity, toolCallScore, agentDecisionScore);
+                completeness, similarity, answerCorrectness, contextPrecision, contextRecall,
+                contextRelevance, toolCallScore, agentDecisionScore);
 
         // 6. 组装明细
         JSONObject detail = new JSONObject();
         detail.put("evalType", evalType);
+        // 综合分权重版本，便于横向对比区分口径（v2 纳入 mrr/ndcg/context/answerCorrectness）
+        detail.put("weightVersion", "v2");
         detail.put("retrievalCount", actualChunks.size());
         detail.put("standardChunkCount", standardChunks.size());
         if (verdict != null) {
@@ -221,11 +228,18 @@ public class EvalExecutionService {
                 .precisionScore(rm.getPrecision())
                 .f1Score(rm.getF1())
                 .top3HitRate(rm.getTop3HitRate())
+                .mrrScore(rm.getMrr())
+                .ndcgScore(rm.getNdcg())
+                .mapScore(rm.getMap())
                 .answerSimilarity(round(similarity))
+                .contextPrecision(verdict == null ? null : round(contextPrecision))
+                .contextRecall(verdict == null ? null : round(contextRecall))
+                .contextRelevance(verdict == null ? null : round(contextRelevance))
                 .faithfulnessScore(round(faithfulness))
                 .relevanceScore(round(relevance))
                 .hallucinationFlag(hallucinationFlag)
                 .completenessScore(round(completeness))
+                .answerCorrectness(verdict == null ? null : round(answerCorrectness))
                 .overallScore(round(overall))
                 .evalDetail(detail.toJSONString())
                 .createTime(LocalDateTime.now().format(FMT))
@@ -240,31 +254,42 @@ public class EvalExecutionService {
     }
 
     /**
-     * 综合分加权策略，按评测类型侧重不同维度：
-     * - RAG_RETRIEVAL：只看检索质量（F1 0.6 + Top3 0.4）
-     * - ANSWER_QUALITY：侧重答案质量（忠实 0.3 + 相关 0.3 + 完整 0.2 + 相似 0.1 - 幻觉惩罚 0.1）
-     * - TOOL_CALL：工具调用质量（工具选择 0.5 + 参数正确 0.5）
-     * - AGENT_DECISION：决策质量（意图 0.3 + 分支 0.3 + 推理 0.4）
-     * - AGENT_DECISION / 其它：检索与质量各半
+     * 综合分加权策略（v2，纳入新增指标），按评测类型侧重不同维度：
+     * <ul>
+     *   <li>RAG_RETRIEVAL：检索质量（F1 0.4 + Top3 0.2 + MRR 0.2 + NDCG 0.2）</li>
+     *   <li>ANSWER_QUALITY：答案质量（忠实 0.25 + 相关 0.25 + 完整 0.15 + 相似 0.05 + 正确性 0.2 + 幻觉惩罚 0.1）
+     *       —— 正确性 0.2 为新增，其余项相对 v1 等比缩减</li>
+     *   <li>CONTEXT_QUALITY：上下文维度（精确率 0.4 + 召回率 0.4 + 相关性 0.2）</li>
+     *   <li>TOOL_CALL：工具调用质量（工具选择 0.5 + 参数正确 0.5）</li>
+     *   <li>AGENT_DECISION：决策质量（意图 0.3 + 分支 0.3 + 推理 0.4）</li>
+     *   <li>默认：检索 0.4 + 上下文 0.2 + 质量 0.4</li>
+     * </ul>
+     * 注：权重版本随结果写入 eval_detail.weightVersion，便于横向对比时区分口径。
      */
     private double computeOverall(String evalType, RetrievalMetrics rm, double faithfulness,
                                   double relevance, double hallucinationRate, double completeness,
-                                  double similarity, Double toolCallScore, Double agentDecisionScore) {
+                                  double similarity, double answerCorrectness,
+                                  double contextPrecision, double contextRecall, double contextRelevance,
+                                  Double toolCallScore, Double agentDecisionScore) {
         switch (evalType) {
             case "RAG_RETRIEVAL":
-                return rm.getF1() * 0.6 + rm.getTop3HitRate() * 0.4;
+                return rm.getF1() * 0.4 + rm.getTop3HitRate() * 0.2 + rm.getMrr() * 0.2 + rm.getNdcg() * 0.2;
             case "ANSWER_QUALITY":
-                return clamp(faithfulness * 0.3 + relevance * 0.3 + completeness * 0.2
-                        + similarity * 0.1 + (1 - hallucinationRate) * 0.1);
+                return clamp(faithfulness * 0.25 + relevance * 0.25 + completeness * 0.15
+                        + similarity * 0.05 + answerCorrectness * 0.2 + (1 - hallucinationRate) * 0.1);
+            case "CONTEXT_QUALITY":
+                return clamp(contextPrecision * 0.4 + contextRecall * 0.4 + contextRelevance * 0.2);
             case "TOOL_CALL":
                 return toolCallScore != null ? toolCallScore : 0.0;
             case "AGENT_DECISION":
                 return agentDecisionScore != null ? agentDecisionScore : 0.0;
             default:
-                double retrievalScore = rm.getF1() * 0.6 + rm.getTop3HitRate() * 0.4;
-                double qualityScore = clamp(faithfulness * 0.4 + relevance * 0.4
-                        + (1 - hallucinationRate) * 0.2);
-                return retrievalScore * 0.5 + qualityScore * 0.5;
+                double retrievalScore = rm.getF1() * 0.4 + rm.getTop3HitRate() * 0.2
+                        + rm.getMrr() * 0.2 + rm.getNdcg() * 0.2;
+                double contextScore = clamp(contextPrecision * 0.4 + contextRecall * 0.4 + contextRelevance * 0.2);
+                double qualityScore = clamp(faithfulness * 0.35 + relevance * 0.35
+                        + (1 - hallucinationRate) * 0.3);
+                return retrievalScore * 0.4 + contextScore * 0.2 + qualityScore * 0.4;
         }
     }
 

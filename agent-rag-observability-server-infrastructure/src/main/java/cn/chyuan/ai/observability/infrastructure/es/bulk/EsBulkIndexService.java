@@ -85,10 +85,14 @@ public class EsBulkIndexService {
             return;
         }
         List<BulkOperation> operations = batch.stream()
-                .map(command -> BulkOperation.of(op -> op.index(i -> i
-                        .index(command.indexName)
-                        .id(command.id)
-                        .document(command.document))))
+                .map(command -> BulkOperation.of(op -> op.index(i -> {
+                    i.index(command.indexName).document(command.document);
+                    // id 为空时不设 .id()，由 ES 自动生成（PUT /_doc/<id> 不允许尾斜杠）
+                    if (command.id != null && !command.id.isEmpty()) {
+                        i.id(command.id);
+                    }
+                    return i;
+                })))
                 .toList();
         var response = esClient.bulk(b -> b.operations(operations));
         if (response.errors()) {
@@ -103,12 +107,12 @@ public class EsBulkIndexService {
 
     private void indexOne(String indexName, String id, Object document) {
         try {
-            esClient.index(i -> i.index(indexName).id(id).document(document));
+            indexOnce(indexName, id, document);
         } catch (Exception e) {
             int retryTimes = Math.max(properties.getRetryTimes(), 0);
             for (int attempt = 1; attempt <= retryTimes; attempt++) {
                 try {
-                    esClient.index(i -> i.index(indexName).id(id).document(document));
+                    indexOnce(indexName, id, document);
                     log.debug("ES index retry succeeded: index={}, id={}, attempt={}", indexName, id, attempt);
                     return;
                 } catch (Exception retryException) {
@@ -117,6 +121,17 @@ public class EsBulkIndexService {
             }
             log.error("ES index failed after retries: index={}, id={}, retryTimes={}", indexName, id, retryTimes, e);
         }
+    }
+
+    private void indexOnce(String indexName, String id, Object document) throws Exception {
+        esClient.index(i -> {
+            i.index(indexName).document(document);
+            // id 为空时不设 .id()，由 ES 自动生成（PUT /_doc/<id> 不允许尾斜杠）
+            if (id != null && !id.isEmpty()) {
+                i.id(id);
+            }
+            return i;
+        });
     }
 
     @PreDestroy
