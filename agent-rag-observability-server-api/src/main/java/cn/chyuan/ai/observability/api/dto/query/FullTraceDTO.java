@@ -26,4 +26,6 @@ public class FullTraceDTO {
     private List<Map<String, Object>> toolCalls;
     /** 记忆检索结果列表（支持同一 Trace 多次记忆召回） */
     private List<Map<String, Object>> memoryRecalls;
+    /** 在线质量评分（TraceQualityCalculator 实时派生，含 retrievalQuality/faithfulness/answerRelevance） */
+    private Map<String, Object> quality;
 }

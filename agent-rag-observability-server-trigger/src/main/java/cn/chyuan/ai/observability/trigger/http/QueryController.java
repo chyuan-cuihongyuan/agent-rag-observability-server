@@ -4,6 +4,7 @@ import cn.chyuan.ai.observability.api.dto.query.FullTraceDTO;
 import cn.chyuan.ai.observability.api.dto.query.TraceQueryDTO;
 import cn.chyuan.ai.observability.domain.observe.model.entity.*;
 import cn.chyuan.ai.observability.domain.observe.service.ObserveQueryService;
+import cn.chyuan.ai.observability.domain.observe.service.TraceQualityCalculator;
 import cn.chyuan.ai.observability.trigger.http.support.RequestValidator;
 import cn.chyuan.ai.observability.types.response.Response;
 import cn.chyuan.ai.observability.types.response.ResponseCode;
@@ -23,9 +24,11 @@ import java.util.stream.Collectors;
 public class QueryController {
 
     private final ObserveQueryService observeQueryService;
+    private final TraceQualityCalculator traceQualityCalculator;
 
-    public QueryController(ObserveQueryService observeQueryService) {
+    public QueryController(ObserveQueryService observeQueryService, TraceQualityCalculator traceQualityCalculator) {
         this.observeQueryService = observeQueryService;
+        this.traceQualityCalculator = traceQualityCalculator;
     }
 
     @GetMapping("/trace/{traceId}")
@@ -41,6 +44,13 @@ public class QueryController {
         List<ToolCallLogEntity> toolCalls = observeQueryService.queryToolCallsByTraceId(traceId);
         List<MemoryRecallLogEntity> memoryRecalls = observeQueryService.queryMemoryRecallsByTraceId(traceId);
 
+        // 在线质量评分（实时派生，零 LLM 成本）
+        TraceQualityCalculator.TraceQuality quality = traceQualityCalculator.compute(retrieval, chatResult);
+        Map<String, Object> qualityMap = new HashMap<>();
+        qualityMap.put("retrievalQuality", quality.retrievalQuality());
+        qualityMap.put("faithfulness", quality.faithfulness());
+        qualityMap.put("answerRelevance", quality.answerRelevance());
+
         FullTraceDTO dto = FullTraceDTO.builder()
                 .traceId(traceId)
                 .agentDecision(decision != null ? JSON.parseObject(JSON.toJSONString(decision)) : null)
@@ -54,6 +64,7 @@ public class QueryController {
                         memoryRecalls.stream()
                                 .map(mr -> JSON.parseObject(JSON.toJSONString(mr)))
                                 .collect(Collectors.toList()) : null)
+                .quality(qualityMap)
                 .sessionId(decision != null ? decision.getSessionId() : (retrieval != null ? retrieval.getSessionId() : ""))
                 .ownerUserId(decision != null ? decision.getOwnerUserId() : "")
                 .agentId(decision != null ? decision.getAgentId() : (retrieval != null ? retrieval.getAgentId() : (chatResult != null ? chatResult.getAgentId() : "")))
