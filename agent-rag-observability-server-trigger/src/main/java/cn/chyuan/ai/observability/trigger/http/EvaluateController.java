@@ -74,6 +74,7 @@ public class EvaluateController {
                 .evalType(entity.getEvalType()).datasetId(entity.getDatasetId())
                 .status(entity.getStatus()).modelVersion(entity.getModelVersion())
                 .ragStrategyVersion(entity.getRagStrategyVersion())
+                .totalCount(entity.getTotalCount()).completedCount(entity.getCompletedCount())
                 .avgOverallScore(entity.getAvgOverallScore())
                 .createTime(entity.getCreateTime()).updateTime(entity.getUpdateTime()).build()
         ).toList();
@@ -93,6 +94,7 @@ public class EvaluateController {
                 .evalType(entity.getEvalType()).datasetId(entity.getDatasetId())
                 .status(entity.getStatus()).modelVersion(entity.getModelVersion())
                 .ragStrategyVersion(entity.getRagStrategyVersion())
+                .totalCount(entity.getTotalCount()).completedCount(entity.getCompletedCount())
                 .avgOverallScore(entity.getAvgOverallScore())
                 .createTime(entity.getCreateTime()).updateTime(entity.getUpdateTime()).build();
         return Response.success(dto);
