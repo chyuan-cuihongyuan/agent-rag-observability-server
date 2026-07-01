@@ -36,7 +36,14 @@ public class WebMvcConfig implements WebMvcConfigurer {
         } else {
             log.warn("eval 接口鉴权已关闭（observability.auth.eval-enabled=false），仅限非生产环境使用");
         }
+        // 仪表盘只读聚合查询（quality_overview / result 对比 / task & dataset 列表）无敏感写操作，
+        // 任何 profile 下均豁免鉴权，保证前端仪表盘正常展示；
+        // seed/eval、collect、task 创建/执行等写操作仍受鉴权保护。
+        List<String> excludes = new ArrayList<>();
+        excludes.add("/api/v1/eval/quality_overview");
+        excludes.add("/api/v1/eval/result/compare");
         registry.addInterceptor(authKeyInterceptor)
-                .addPathPatterns(patterns.toArray(new String[0]));
+                .addPathPatterns(patterns.toArray(new String[0]))
+                .excludePathPatterns(excludes.toArray(new String[0]));
     }
 }

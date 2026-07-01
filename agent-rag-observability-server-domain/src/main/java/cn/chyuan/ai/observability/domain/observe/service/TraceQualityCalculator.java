@@ -3,9 +3,12 @@ package cn.chyuan.ai.observability.domain.observe.service;
 import cn.chyuan.ai.observability.domain.observe.model.entity.ChatResultEntity;
 import cn.chyuan.ai.observability.domain.observe.model.entity.RagRetrievalEntity;
 import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONArray;
+import com.alibaba.fastjson.JSONObject;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
@@ -43,34 +46,39 @@ public class TraceQualityCalculator {
     }
 
     /**
-     * 检索质量分（0-1）：
-     * - 空检索直接 0.0
-     * - 否则 = rerank_scores 均值权重 0.6 + 召回充足度权重 0.4
-     *   召回充足度 = min(retrievalCount, topK) / topK（实际召回是否接近配置上限）
+     * 检索质量分（0-1，null 表示无法评估）：
+     * <ul>
+     *   <li>空检索 → 0.0</li>
+     *   <li>rerankScores 缺失时回退从 sourceDocs 抽 score（应对上游漏记 rerankScores 的历史数据）</li>
+     *   <li>仍无任何分数信号 → null（不造假默认值，前端显示 "-"）</li>
+     *   <li>有分数 → rerank top1/均值 权重 0.6 + 召回充足度 权重 0.4</li>
+     * </ul>
      */
-    private double computeRetrievalQuality(RagRetrievalEntity r) {
+    private Double computeRetrievalQuality(RagRetrievalEntity r) {
         // 空检索 = 质量最差
         if (r.getEmptyRetrieval() != null && r.getEmptyRetrieval() == 1) {
             return 0.0;
         }
 
-        // rerank 分数均值
-        double scorePart = 0.5; // 无分数时中性默认
+        // 解析 rerankScores；为空时回退从 sourceDocs 抽 score（应对上游漏记 rerankScores 的历史数据）
         List<Double> scores = parseScoreList(r.getRerankScores());
-        if (!scores.isEmpty()) {
-            double avg = scores.stream().mapToDouble(d -> d).average().orElse(0.5);
-            double top1 = scores.stream().mapToDouble(d -> d).max().orElse(0.5);
-            // top1 权重高（最相关的那条最重要）
-            scorePart = clamp(top1 * 0.6 + avg * 0.4);
+        if (scores.isEmpty()) {
+            scores = parseScoresFromSourceDocs(r.getSourceDocs());
+        }
+        // 无任何分数信号：无法评估，返回 null 而非默认 0.5 拼出的假分
+        if (scores.isEmpty()) {
+            return null;
         }
 
+        double avg = scores.stream().mapToDouble(d -> d).average().orElse(0.5);
+        double top1 = scores.stream().mapToDouble(d -> d).max().orElse(0.5);
+        // top1 权重高（最相关的那条最重要）
+        double scorePart = clamp(top1 * 0.6 + avg * 0.4);
+
         // 召回充足度
-        double sufficiencyPart = 0.5;
         int topK = r.getRetrievalTopk() == null || r.getRetrievalTopk() <= 0 ? 5 : r.getRetrievalTopk();
         int count = r.getRetrievalCount() == null ? 0 : r.getRetrievalCount();
-        if (count > 0) {
-            sufficiencyPart = clamp((double) Math.min(count, topK) / topK);
-        }
+        double sufficiencyPart = count > 0 ? clamp((double) Math.min(count, topK) / topK) : 0.0;
 
         return clamp(scorePart * 0.6 + sufficiencyPart * 0.4);
     }
@@ -138,16 +146,81 @@ public class TraceQualityCalculator {
         return clamp(hitRate);
     }
 
-    /** 解析 rerank_scores JSON 数组（如 "[0.92,0.87]"） */
+    /**
+     * 解析 rerank_scores JSON 数组，兼容两种格式：
+     * <ul>
+     *   <li>纯数字数组：{@code [0.92, 0.87]}</li>
+     *   <li>对象数组：{@code [{"score":0.92}, {"score":0.87}]}（兼容 score / relevance / rerank_score 字段）</li>
+     * </ul>
+     */
     private List<Double> parseScoreList(String json) {
         if (json == null || json.isEmpty() || json.equals("[]")) {
             return List.of();
         }
         try {
-            List<Double> list = JSON.parseArray(json, Double.class);
-            return list == null ? List.of() : list;
+            JSONArray array = JSON.parseArray(json);
+            if (array == null || array.isEmpty()) {
+                return List.of();
+            }
+            List<Double> list = new ArrayList<>(array.size());
+            for (int i = 0; i < array.size(); i++) {
+                Double v = extractScore(array.get(i));
+                if (v != null) {
+                    list.add(v);
+                }
+            }
+            return list;
         } catch (Exception e) {
             log.debug("解析 rerankScores 失败: {}", json);
+            return List.of();
+        }
+    }
+
+    /** 从数组元素中抽取分数：纯数字直接取，对象取 score / relevance / rerank_score 字段。 */
+    private Double extractScore(Object element) {
+        if (element == null) {
+            return null;
+        }
+        // 纯数字：[0.92, 0.87]
+        if (element instanceof Number) {
+            return ((Number) element).doubleValue();
+        }
+        // 对象：[{"score": 0.92}, {"relevance": 0.87}, ...]
+        if (element instanceof JSONObject) {
+            JSONObject obj = (JSONObject) element;
+            for (String key : new String[]{"score", "relevance", "rerank_score", "rerankScore"}) {
+                if (obj.containsKey(key)) {
+                    return obj.getDouble(key);
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 从 sourceDocs JSON 数组中抽取 score 字段，作为 rerankScores 缺失时的兜底。
+     * sourceDocs 由上游序列化为 [{chunkId, score, ...}, ...]，与 rerankScores 同源。
+     * 兼容字符串数组格式（如 seed 数据 ["KB-DOC-1", ...]），非对象元素跳过。
+     */
+    private List<Double> parseScoresFromSourceDocs(String json) {
+        if (json == null || json.isEmpty() || json.equals("[]")) {
+            return List.of();
+        }
+        try {
+            JSONArray array = JSON.parseArray(json);
+            if (array == null || array.isEmpty()) {
+                return List.of();
+            }
+            List<Double> list = new ArrayList<>(array.size());
+            for (int i = 0; i < array.size(); i++) {
+                Double v = extractScore(array.get(i));
+                if (v != null) {
+                    list.add(v);
+                }
+            }
+            return list;
+        } catch (Exception e) {
+            log.debug("解析 sourceDocs 抽取 score 失败: {}", json);
             return List.of();
         }
     }
