@@ -12,4 +12,5 @@ public interface IEvalTaskRepository {
     List<EvalTaskEntity> queryRecentCompleted(int limit);
     void updateStatus(String taskId, String status);
     void updateProgress(String taskId, int completedCount, Double avgScore);
+    void updateTotalCount(String taskId, int totalCount);
 }

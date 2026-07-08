@@ -36,4 +36,9 @@
         WHERE task_id = #{taskId}
     </update>
 
+    <update id="updateTotalCount">
+        UPDATE eval_task SET total_count = #{totalCount}, update_time = NOW()
+        WHERE task_id = #{taskId}
+    </update>
+
 </mapper>

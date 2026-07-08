@@ -41,6 +41,10 @@ public class EvaluateService {
         String taskId = UUID.randomUUID().toString().replace("-", "").substring(0, 16);
         entity.setTaskId(taskId);
         entity.setStatus("PENDING");
+        entity.setTotalCount(entity.getTotalCount() == null ? 0 : entity.getTotalCount());
+        entity.setCompletedCount(entity.getCompletedCount() == null ? 0 : entity.getCompletedCount());
+        entity.setModelVersion(entity.getModelVersion() == null ? "" : entity.getModelVersion());
+        entity.setRagStrategyVersion(entity.getRagStrategyVersion() == null ? "" : entity.getRagStrategyVersion());
         entity.setCreateTime(LocalDateTime.now().format(FMT));
         entity.setUpdateTime(LocalDateTime.now().format(FMT));
         evalTaskRepository.save(entity);

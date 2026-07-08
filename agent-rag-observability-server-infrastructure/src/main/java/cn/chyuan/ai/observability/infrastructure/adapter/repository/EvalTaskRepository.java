@@ -49,6 +49,11 @@ public class EvalTaskRepository implements IEvalTaskRepository {
         evalTaskMapper.updateProgress(taskId, completedCount, avgScore);
     }
 
+    @Override
+    public void updateTotalCount(String taskId, int totalCount) {
+        evalTaskMapper.updateTotalCount(taskId, totalCount);
+    }
+
     private EvalTaskPO toPO(EvalTaskEntity e) {
         return EvalTaskPO.builder().taskId(e.getTaskId()).taskName(e.getTaskName()).evalType(e.getEvalType()).datasetId(e.getDatasetId()).status(e.getStatus()).totalCount(e.getTotalCount()).completedCount(e.getCompletedCount()).modelVersion(e.getModelVersion()).ragStrategyVersion(e.getRagStrategyVersion()).avgOverallScore(e.getAvgOverallScore()).createTime(e.getCreateTime()).updateTime(e.getUpdateTime()).build();
     }

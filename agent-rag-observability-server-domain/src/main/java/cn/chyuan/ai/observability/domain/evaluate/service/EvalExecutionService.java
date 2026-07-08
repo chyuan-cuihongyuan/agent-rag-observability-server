@@ -81,6 +81,7 @@ public class EvalExecutionService {
 
             String evalType = task.getEvalType() == null ? "ANSWER_QUALITY" : task.getEvalType();
             int total = items.size();
+            evalTaskRepository.updateTotalCount(taskId, total);
             int completed = 0;
             double sumOverall = 0.0;
             List<EvalResultEntity> buffer = new ArrayList<>();

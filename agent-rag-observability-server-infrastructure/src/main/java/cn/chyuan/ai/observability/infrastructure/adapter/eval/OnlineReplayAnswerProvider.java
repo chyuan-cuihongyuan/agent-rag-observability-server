@@ -52,7 +52,7 @@ public class OnlineReplayAnswerProvider implements IAnswerSourceProvider {
             JSONObject requestJson = new JSONObject();
             requestJson.put("agentId", targetAgentId);
             requestJson.put("sessionId", "eval-" + traceId);
-            requestJson.put("queryText", query);
+            requestJson.put("message", query);
             requestJson.put("stream", false);
 
             Request request = new Request.Builder()
@@ -96,17 +96,23 @@ public class OnlineReplayAnswerProvider implements IAnswerSourceProvider {
             // 检查是否为标准信封格式 { code: "0000", data: {...} }
             if (json.containsKey("code")) {
                 JSONObject data = json.getJSONObject("data");
-                if (data != null && data.containsKey("answerText")) {
-                    return data.getString("answerText");
+                if (data != null) {
+                    // 优先 answerText，降级 content（ChatResponseDTO 实际字段为 content）
+                    String answer = data.getString("answerText");
+                    if (answer == null || answer.isEmpty()) {
+                        answer = data.getString("content");
+                    }
+                    if (answer != null) return answer;
                 }
             }
-            // 直接格式 { answerText: "..." }
-            if (json.containsKey("answerText")) {
-                return json.getString("answerText");
+            // 直接格式
+            String answer = json.getString("answerText");
+            if (answer == null || answer.isEmpty()) {
+                answer = json.getString("content");
             }
-            return "";
+            return answer == null ? "" : answer;
         } catch (Exception e) {
-            log.warn("解析 answerText 失败, err={}", e.getMessage());
+            log.warn("解析答案失败, err={}", e.getMessage());
             return "";
         }
     }
@@ -138,7 +144,10 @@ public class OnlineReplayAnswerProvider implements IAnswerSourceProvider {
                 for (Object item : (List<?>) sourceDocsObj) {
                     if (item instanceof JSONObject) {
                         JSONObject chunk = (JSONObject) item;
-                        String content = chunk.getString("content");
+                        String content = chunk.getString("snippet");
+                        if (content == null || content.isEmpty()) {
+                            content = chunk.getString("content");
+                        }
                         if (content != null && !content.isEmpty()) {
                             chunks.add(content);
                         }
@@ -162,7 +171,10 @@ public class OnlineReplayAnswerProvider implements IAnswerSourceProvider {
             List<String> chunks = new ArrayList<>();
             for (int i = 0; i < arr.size(); i++) {
                 JSONObject obj = arr.getJSONObject(i);
-                String content = obj.getString("content");
+                String content = obj.getString("snippet");
+                if (content == null || content.isEmpty()) {
+                    content = obj.getString("content");
+                }
                 if (content != null && !content.isEmpty()) {
                     chunks.add(content);
                 }

@@ -87,7 +87,11 @@ public class OfflineTraceAnswerProvider implements IAnswerSourceProvider {
             List<String> chunks = new ArrayList<>();
             for (int i = 0; i < arr.size(); i++) {
                 com.alibaba.fastjson.JSONObject obj = arr.getJSONObject(i);
-                String content = obj.getString("content");
+                // sourceDocs 实际字段为 snippet（非 content），兼容两种
+                String content = obj.getString("snippet");
+                if (content == null || content.isEmpty()) {
+                    content = obj.getString("content");
+                }
                 if (content != null && !content.isEmpty()) {
                     chunks.add(content);
                 }
