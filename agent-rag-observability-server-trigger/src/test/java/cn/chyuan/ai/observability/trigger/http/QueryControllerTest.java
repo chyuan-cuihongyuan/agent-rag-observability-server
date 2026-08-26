@@ -5,6 +5,7 @@ import cn.chyuan.ai.observability.domain.observe.model.entity.AgentDecisionEntit
 import cn.chyuan.ai.observability.domain.observe.model.entity.ChatResultEntity;
 import cn.chyuan.ai.observability.domain.observe.model.entity.RagRetrievalEntity;
 import cn.chyuan.ai.observability.domain.observe.service.ObserveQueryService;
+import cn.chyuan.ai.observability.domain.observe.service.TraceQualityCalculator;
 import cn.chyuan.ai.observability.types.response.Response;
 import cn.chyuan.ai.observability.types.response.ResponseCode;
 import org.junit.jupiter.api.DisplayName;
@@ -32,6 +33,9 @@ public class QueryControllerTest {
     @Mock
     private ObserveQueryService observeQueryService;
 
+    @Mock
+    private TraceQualityCalculator traceQualityCalculator;
+
     @InjectMocks
     private QueryController controller;
 
@@ -47,6 +51,8 @@ public class QueryControllerTest {
         when(observeQueryService.queryDecisionByTraceId("trace-001")).thenReturn(decision);
         when(observeQueryService.queryRetrievalByTraceId("trace-001")).thenReturn(null);
         when(observeQueryService.queryChatResultByTraceId("trace-001")).thenReturn(null);
+        when(traceQualityCalculator.compute(any(), any()))
+                .thenReturn(new TraceQualityCalculator.TraceQuality(0.9, 0.8, 0.85));
 
         // 执行
         var result = controller.queryTrace("trace-001");

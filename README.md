@@ -124,7 +124,7 @@ agent-rag-observability-server/
 
 ### 环境要求
 
-- JDK 17+
+- JDK 21+
 - Maven 3.8+
 - MySQL 8.x、Elasticsearch 8.x、Redis、RocketMQ
 
