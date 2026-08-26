@@ -25,7 +25,7 @@ public class OnlineReplayAnswerProvider implements IAnswerSourceProvider {
 
     private final OkHttpClient httpClient;
 
-    @Value("${observability.eval.provider.online.endpoint:http://49.232.169.33:8091/api/v1/chat}")
+    @Value("${observability.eval.provider.online.endpoint:http://127.0.0.1:8091/api/v1/chat}")
     private String endpoint;
 
     @Value("${observability.eval.provider.online.timeout:30}")
