@@ -101,11 +101,11 @@ agent-rag-observability-server/
 
 | 技术 | 版本 | 说明 |
 |------|------|------|
-| Spring Boot | 3.4.3 | 应用框架 |
+| Spring Boot | 4.1.1 | 应用框架 |
 | Java | 17 | 编程语言 |
 | MyBatis | 3.0.4 | ORM |
 | OpenTelemetry | 1.39.0 | 链路追踪 |
-| Spring AI | 1.1.0-M3 | AI 集成（评测用） |
+| Spring AI | 2.0.1 | AI 集成（评测用） |
 
 ### 数据存储与中间件
 

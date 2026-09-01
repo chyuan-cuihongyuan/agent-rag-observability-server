@@ -44,60 +44,25 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.4.3</version>
+        <version>4.1.1</version>
+        <relativePath/>
     </parent>
-    <repositories>
-        <repository>
-            <id>spring-milestones</id>
-            <name>Spring Milestones</name>
-            <url>https://repo.spring.io/milestone</url>
-            <snapshots>
-                <enabled>false</enabled>
-            </snapshots>
-        </repository>
-    </repositories>
     <dependencyManagement>
         <dependencies>
-            <!-- MyBatis -->
+            <!-- 平台共享依赖版本收敛（Boot 4.1.1 + Spring AI 2.0.1，工单 0024，第三消费方）：
+                 本地 mvn install platform-bom 后 import 消费，替代原 spring-ai-bom 直接导入与散钉版本 -->
             <dependency>
-                <groupId>org.mybatis.spring.boot</groupId>
-                <artifactId>mybatis-spring-boot-starter</artifactId>
-                <version>3.0.4</version>
+                <groupId>cn.chyuan.ai</groupId>
+                <artifactId>platform-bom</artifactId>
+                <version>1.0</version>
+                <type>pom</type>
+                <scope>import</scope>
             </dependency>
-            <!-- MySQL -->
+            <!-- MySQL（旧坐标存量，仅本工程内消费） -->
             <dependency>
                 <groupId>mysql</groupId>
                 <artifactId>mysql-connector-java</artifactId>
                 <version>8.0.33</version>
-            </dependency>
-            <dependency>
-                <groupId>com.mysql</groupId>
-                <artifactId>mysql-connector-j</artifactId>
-                <version>8.0.33</version>
-            </dependency>
-            <!-- FastJSON -->
-            <dependency>
-                <groupId>com.alibaba</groupId>
-                <artifactId>fastjson</artifactId>
-                <version>2.0.28</version>
-            </dependency>
-            <!-- Commons Lang3 -->
-            <dependency>
-                <groupId>org.apache.commons</groupId>
-                <artifactId>commons-lang3</artifactId>
-                <version>3.9</version>
-            </dependency>
-            <!-- Guava -->
-            <dependency>
-                <groupId>com.google.guava</groupId>
-                <artifactId>guava</artifactId>
-                <version>32.1.3-jre</version>
-            </dependency>
-            <!-- OkHttp -->
-            <dependency>
-                <groupId>com.squareup.okhttp3</groupId>
-                <artifactId>okhttp</artifactId>
-                <version>4.12.0</version>
             </dependency>
             <!-- RocketMQ -->
             <dependency>
@@ -105,7 +70,7 @@
                 <artifactId>rocketmq-spring-boot-starter</artifactId>
                 <version>2.3.1</version>
             </dependency>
-            <!-- Elasticsearch (Spring Boot 管理版本) -->
+            <!-- Elasticsearch（显式钉版 8.13.x，不随 Boot 4 父 POM 变 9.x，0023 同口径） -->
             <dependency>
                 <groupId>co.elastic.clients</groupId>
                 <artifactId>elasticsearch-java</artifactId>
@@ -126,14 +91,6 @@
                 <groupId>io.opentelemetry</groupId>
                 <artifactId>opentelemetry-bom</artifactId>
                 <version>${opentelemetry.version}</version>
-                <type>pom</type>
-                <scope>import</scope>
-            </dependency>
-            <!-- Spring AI BOM -->
-            <dependency>
-                <groupId>org.springframework.ai</groupId>
-                <artifactId>spring-ai-bom</artifactId>
-                <version>1.1.0-M3</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>

@@ -84,6 +84,12 @@
             <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-openai</artifactId>
         </dependency>
+        <!-- 官方 openai-java OkHttp 客户端 — spring-ai-openai 2.0 仅传递 core，
+             OpenAIOkHttpClient 构建需显式引入（0016 第 1 条/0023 同款） -->
+        <dependency>
+            <groupId>com.openai</groupId>
+            <artifactId>openai-java-client-okhttp</artifactId>
+        </dependency>
 
         <!-- OkHttp (for OnlineReplayAnswerProvider) -->
         <dependency>
