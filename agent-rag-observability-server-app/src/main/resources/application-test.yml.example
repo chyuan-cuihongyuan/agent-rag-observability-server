@@ -12,6 +12,12 @@ spring:
     username: ${MYSQL_USERNAME:<your-username>}
     password: ${MYSQL_PASSWORD:<your-password>}
     driver-class-name: com.mysql.cj.jdbc.Driver
+    # ── PostgreSQL 切换模板（三期 PG 双轨，工单 0122）────────────────────
+    # 切 PG 时将上方 url / driver-class-name 替换为：
+    #   url: jdbc:postgresql://${POSTGRESQL_HOST:<your-host>}:${POSTGRESQL_PORT:5432}/agent_observability?currentSchema=public
+    #   driver-class-name: org.postgresql.Driver
+    # 建表脚本：sql/ 目录双方言 DDL（MySQL/PG）。
+    # ─────────────────────────────────────────────────────────────────────
   elasticsearch:
     uris: ${ES_SCHEME:http}://${ES_HOST:<your-host>}:${ES_PORT:9200}
     username: ${ES_USERNAME:<your-username>}
