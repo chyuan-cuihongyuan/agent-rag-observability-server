@@ -3,6 +3,9 @@
 -- 工单 0123（三期 O3：PG 全量 DDL 翻译）补账：为从未入库过 DDL 的表补建脚本，2026-09-10。
 -- 工单 0133/0134（三期 R1/R2）：eval_dataset 增列 version/pool/source/frozen 并入建表
 --   （既有库手工执行表 6 后注释中的 ALTER）；新增第 9 表 eval_rubric，2026-09-10。
+-- 工单 0135/0136（三期 R3/R4）：eval_task 增列 trials/pass_threshold/pass_rate/score_std_dev/gate_id、
+--   eval_result 增列 trial_no 并入建表（既有库手工执行表 7/8 后注释中的 ALTER）；
+--   新增第 10/11 表 eval_gate、eval_gate_record，2026-09-10。
 -- 口径：
 --   (1) agent_decision_log / rag_retrieval_log / chat_result_log 三表以
 --       docs/02-agent-rag-observability-server/09-补充技术细节.md 第 1040-1128 行
@@ -176,7 +179,8 @@ CREATE TABLE IF NOT EXISTS eval_dataset (
 --     ADD INDEX idx_dataset_name_version (dataset_name, version),
 --     ADD INDEX idx_pool (pool);
 
--- 7. 评测任务表（反推：eval_task_mapper.xml 全部 SQL 列集 + EvalTaskPO）
+-- 7. 评测任务表（反推：eval_task_mapper.xml 全部 SQL 列集 + EvalTaskPO；
+--    工单 0135 R3 增列 trials/pass_threshold/pass_rate/score_std_dev、工单 0136 R4 增列 gate_id 已并入建表）
 CREATE TABLE IF NOT EXISTS eval_task (
     id                  BIGINT        NOT NULL AUTO_INCREMENT COMMENT '主键ID',
     task_id             VARCHAR(64)   NOT NULL COMMENT '任务业务ID（唯一）',
@@ -184,23 +188,40 @@ CREATE TABLE IF NOT EXISTS eval_task (
     eval_type           VARCHAR(32)   NOT NULL COMMENT '评测类型（RAG/AGENT 等）',
     dataset_id          VARCHAR(64)   NOT NULL COMMENT '关联数据集业务ID',
     status              VARCHAR(32)   NOT NULL COMMENT '任务状态（PENDING/RUNNING/COMPLETED/FAILED）',
-    total_count         INT           DEFAULT 0 COMMENT '总条目数（PO Integer）',
-    completed_count     INT           DEFAULT 0 COMMENT '已完成条目数（PO Integer）',
+    total_count         INT           DEFAULT 0 COMMENT '总条目数（样本数×trials，PO Integer）',
+    completed_count     INT           DEFAULT 0 COMMENT '已完成条目数（含全部 trial 累计，PO Integer）',
     model_version       VARCHAR(64)   DEFAULT NULL COMMENT '模型版本',
-    rag_strategy_version VARCHAR(64)   DEFAULT NULL COMMENT 'RAG策略版本',
-    avg_overall_score   DECIMAL(10,6) DEFAULT NULL COMMENT '平均总分（PO Double）',
+    rag_strategy_version VARCHAR(64)  DEFAULT NULL COMMENT 'RAG策略版本',
+    avg_overall_score   DECIMAL(10,6) DEFAULT NULL COMMENT '平均总分（全部 trial 全部样本均值，PO Double）',
+    trials              INT           NOT NULL DEFAULT 1 COMMENT '试验次数 k（工单 0135 R3 Pass@k；1=旧行为）',
+    pass_threshold      DECIMAL(10,6) DEFAULT NULL COMMENT '样本达标阈值（NULL=应用默认 0.5，沿用 Rubric 达标线）',
+    pass_rate           DECIMAL(10,6) DEFAULT NULL COMMENT '通过率 Pass@k（k 次 trial 至少 1 次达标的样本占比，完成时回写）',
+    score_std_dev       DECIMAL(10,6) DEFAULT NULL COMMENT 'per-trial 综合分均值的标准差（完成时回写，总体口径）',
+    gate_id             VARCHAR(64)   DEFAULT NULL COMMENT '绑定的门禁规则 ID（工单 0136 R4 回测；非空时完成回调判定）',
     create_time         DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     update_time         DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '更新时间（应用层维护）',
     PRIMARY KEY (id),
     UNIQUE KEY uk_task_id (task_id),
-    INDEX idx_status_update (status, update_time)
+    INDEX idx_status_update (status, update_time),
+    INDEX idx_gate_id (gate_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='评测任务表';
 
+-- 既有库增量升级（手工执行；工单 0135/0136 R3/R4，对已存在的旧 eval_task）：
+-- ALTER TABLE eval_task
+--     ADD COLUMN trials INT NOT NULL DEFAULT 1 COMMENT '试验次数 k（Pass@k；1=旧行为）',
+--     ADD COLUMN pass_threshold DECIMAL(10,6) DEFAULT NULL COMMENT '样本达标阈值（NULL=默认 0.5）',
+--     ADD COLUMN pass_rate DECIMAL(10,6) DEFAULT NULL COMMENT '通过率 Pass@k（完成时回写）',
+--     ADD COLUMN score_std_dev DECIMAL(10,6) DEFAULT NULL COMMENT 'per-trial 综合分标准差（完成时回写）',
+--     ADD COLUMN gate_id VARCHAR(64) DEFAULT NULL COMMENT '绑定门禁规则 ID（回测）',
+--     ADD INDEX idx_gate_id (gate_id);
+
 -- 8. 评测结果表（反推：eval_result_mapper.xml INSERT/batchInsert/SELECT 全部 31 业务列
---    逐列核对 + EvalResultPO；分数列 PO 均 Double → DECIMAL(10,6)）
+--    逐列核对 + EvalResultPO；分数列 PO 均 Double → DECIMAL(10,6)；
+--    工单 0135 R3 增列 trial_no 已并入建表）
 CREATE TABLE IF NOT EXISTS eval_result (
     id                   BIGINT        NOT NULL AUTO_INCREMENT COMMENT '主键ID',
     task_id              VARCHAR(64)   NOT NULL COMMENT '评测任务业务ID（一任务多条明细）',
+    trial_no             INT           NOT NULL DEFAULT 1 COMMENT '试验序号（1..k；k=1 时恒为 1，工单 0135 R3）',
     trace_id             VARCHAR(64)   DEFAULT NULL COMMENT '链路追踪ID',
     query_text           TEXT          COMMENT '评测问题',
     standard_answer      TEXT          COMMENT '标准答案',
@@ -232,8 +253,14 @@ CREATE TABLE IF NOT EXISTS eval_result (
     agent_decision_score DECIMAL(10,6) DEFAULT NULL COMMENT 'Agent 决策总分项（结构化落库）',
     create_time          DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     PRIMARY KEY (id),
-    INDEX idx_task_time (task_id, create_time)
+    INDEX idx_task_time (task_id, create_time),
+    INDEX idx_task_trial (task_id, trial_no)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='评测结果表';
+
+-- 既有库增量升级（手工执行；工单 0135 R3，对已存在的旧 eval_result）：
+-- ALTER TABLE eval_result
+--     ADD COLUMN trial_no INT NOT NULL DEFAULT 1 COMMENT '试验序号（1..k；k=1 时恒为 1）',
+--     ADD INDEX idx_task_trial (task_id, trial_no);
 
 -- 9. 评测 Rubric 评判标准表（工单 0133 R1：eval_rubric_mapper.xml 全部 SQL 列集 + EvalRubricPO）
 CREATE TABLE IF NOT EXISTS eval_rubric (
@@ -254,3 +281,36 @@ CREATE TABLE IF NOT EXISTS eval_rubric (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='评测Rubric评判标准表';
 -- 既有库为空表时直接执行上方 CREATE；dimensions JSON 由应用层（RubricService）校验
 -- 维度 key 唯一 + 权重和=1，库层不额外建 JSON 约束。
+
+-- 10. 评测门禁规则表（工单 0136 R4：分层门禁——安全维度一票否决 + 质量分阈值）
+CREATE TABLE IF NOT EXISTS eval_gate (
+    id                 BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    gate_id            VARCHAR(64)  NOT NULL COMMENT '门禁规则业务ID（唯一）',
+    name               VARCHAR(128) NOT NULL COMMENT '门禁名称（唯一）',
+    safety_dims        TEXT         COMMENT '安全维度 JSON 对象 {dim: minSafety}（任一低于下限即一票否决；正向安全分口径，hallucination 配 0.8 等价幻觉率上限 0.2）',
+    score_thresholds   TEXT         COMMENT '质量分阈值 JSON 对象 {metric: min}（metric 可为 overall/passRate 或 Rubric 维度 key）',
+    trials             INT          NOT NULL DEFAULT 1 COMMENT '回测评测试验次数 k（取自门禁配置）',
+    enabled            TINYINT      NOT NULL DEFAULT 1 COMMENT '是否启用：0-停用，1-启用',
+    create_time        DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time        DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '更新时间（应用层维护）',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_gate_id (gate_id),
+    UNIQUE KEY uk_gate_name (name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='评测门禁规则表';
+-- safety_dims/score_thresholds JSON 结构与维度存在性由应用层（GateService）校验，
+-- 库层不额外建 JSON 约束。
+
+-- 11. 评测门禁记录表（工单 0136 R4：回测判定结论落账——PASS/BLOCK + 触发明细）
+CREATE TABLE IF NOT EXISTS eval_gate_record (
+    id             BIGINT      NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    record_id      VARCHAR(64) NOT NULL COMMENT '门禁记录业务ID（唯一）',
+    gate_id        VARCHAR(64) NOT NULL COMMENT '门禁规则业务ID',
+    task_id        VARCHAR(64) NOT NULL COMMENT '回测评测任务业务ID',
+    result         VARCHAR(16) NOT NULL COMMENT '门禁结论：PASS-放行，BLOCK-拦截（安全越限/分数越限/任务失败）',
+    trigger_detail TEXT        COMMENT '触发明细 JSON 数组 [{ruleType,dim,actual,threshold,note}]（PO String）',
+    create_time    DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_record_id (record_id),
+    INDEX idx_gate_time (gate_id, create_time),
+    INDEX idx_task_id (task_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='评测门禁记录表';

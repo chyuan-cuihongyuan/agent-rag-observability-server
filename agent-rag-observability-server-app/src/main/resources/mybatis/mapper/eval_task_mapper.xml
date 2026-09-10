@@ -1,29 +1,41 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- 评测任务表 mapper（工单 0135 R3 增列 trials/pass_threshold/pass_rate/score_std_dev；
+     工单 0136 R4 增列 gate_id）：双方言通用语句（分页 LIMIT #{size} OFFSET #{offset}） -->
 <mapper namespace="cn.chyuan.ai.observability.infrastructure.dao.mapper.EvalTaskMapper">
 
     <insert id="insert" parameterType="cn.chyuan.ai.observability.infrastructure.dao.po.EvalTaskPO" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO eval_task (task_id, task_name, eval_type, dataset_id, status, total_count, completed_count,
-                              model_version, rag_strategy_version, avg_overall_score, create_time, update_time)
+                              model_version, rag_strategy_version, avg_overall_score,
+                              trials, pass_threshold, pass_rate, score_std_dev, gate_id,
+                              create_time, update_time)
         VALUES (#{taskId}, #{taskName}, #{evalType}, #{datasetId}, #{status}, #{totalCount}, #{completedCount},
-                #{modelVersion}, #{ragStrategyVersion}, #{avgOverallScore}, #{createTime}, #{updateTime})
+                #{modelVersion}, #{ragStrategyVersion}, #{avgOverallScore},
+                #{trials}, #{passThreshold}, #{passRate}, #{scoreStdDev}, #{gateId},
+                #{createTime}, #{updateTime})
     </insert>
 
     <select id="selectByTaskId" resultType="cn.chyuan.ai.observability.infrastructure.dao.po.EvalTaskPO">
         SELECT id, task_id, task_name, eval_type, dataset_id, status, total_count, completed_count,
-               model_version, rag_strategy_version, avg_overall_score, create_time, update_time
+               model_version, rag_strategy_version, avg_overall_score,
+               trials, pass_threshold, pass_rate, score_std_dev, gate_id,
+               create_time, update_time
         FROM eval_task WHERE task_id = #{taskId}
     </select>
 
     <select id="selectList" resultType="cn.chyuan.ai.observability.infrastructure.dao.po.EvalTaskPO">
         SELECT id, task_id, task_name, eval_type, dataset_id, status, total_count, completed_count,
-               model_version, rag_strategy_version, avg_overall_score, create_time, update_time
+               model_version, rag_strategy_version, avg_overall_score,
+               trials, pass_threshold, pass_rate, score_std_dev, gate_id,
+               create_time, update_time
         FROM eval_task ORDER BY create_time DESC LIMIT #{size} OFFSET #{offset}
     </select>
 
     <select id="selectRecentCompleted" resultType="cn.chyuan.ai.observability.infrastructure.dao.po.EvalTaskPO">
         SELECT id, task_id, task_name, eval_type, dataset_id, status, total_count, completed_count,
-               model_version, rag_strategy_version, avg_overall_score, create_time, update_time
+               model_version, rag_strategy_version, avg_overall_score,
+               trials, pass_threshold, pass_rate, score_std_dev, gate_id,
+               create_time, update_time
         FROM eval_task WHERE status = 'COMPLETED' ORDER BY update_time DESC LIMIT #{limit}
     </select>
 
@@ -38,6 +50,12 @@
 
     <update id="updateTotalCount">
         UPDATE eval_task SET total_count = #{totalCount}, update_time = NOW()
+        WHERE task_id = #{taskId}
+    </update>
+
+    <!-- 任务完成时回写 Pass@k 汇总（工单 0135 R3）：通过率 + per-trial 综合分标准差 -->
+    <update id="updatePassStatistics">
+        UPDATE eval_task SET pass_rate = #{passRate}, score_std_dev = #{scoreStdDev}, update_time = NOW()
         WHERE task_id = #{taskId}
     </update>
 

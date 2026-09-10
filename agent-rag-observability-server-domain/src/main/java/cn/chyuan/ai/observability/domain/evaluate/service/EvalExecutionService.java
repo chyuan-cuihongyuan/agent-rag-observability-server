@@ -13,6 +13,7 @@ import cn.chyuan.ai.observability.domain.evaluate.model.valobj.AnswerSample;
 import cn.chyuan.ai.observability.domain.evaluate.model.valobj.EvalDatasetItem;
 import cn.chyuan.ai.observability.domain.evaluate.model.valobj.JudgeVerdict;
 import cn.chyuan.ai.observability.domain.evaluate.model.valobj.RetrievalMetrics;
+import cn.chyuan.ai.observability.domain.evaluate.model.valobj.TaskEvalSummary;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import lombok.extern.slf4j.Slf4j;
@@ -23,6 +24,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -36,6 +38,18 @@ import java.util.Map;
  * 工单 0133 R1 改造：综合分权重从 Rubric 读取（RubricService.resolveWeights，
  * evalType → 启用中 Rubric，缺省回退内置 v2 兜底口径）；LLM 评判解析失败/降级的
  * unknown 维度占比进样本明细（eval_detail.unknownRatio）与任务级指标（eval_unknown_ratio）。
+ * <p>
+ * 工单 0135 R3 改造（Pass@k 多试验）：外层按 trials=k 循环执行，每 trial 独立走答案源
+ * （在线回放天然随机——同一 query 每次 LLM/检索结果可能不同，正是 k 次试验对抗的对象；
+ * 离线复用确定性——同一 trace 的答案固定，k 次结果一致，方差为 0，Pass@k 退化为 Pass@1）；
+ * 结果行带 trial_no（1..k，k=1 恒为 1 与旧行为一致）；进度回写按总 trial 比例
+ * （total_count = 样本数 × k，completed 跨 trial 全局累计）；任务完成时回写 Pass@k 汇总
+ * （pass_rate 通过率 + score_std_dev 方差，口径见 PassAtKCalculator）。
+ * <p>
+ * 工单 0136 R4 改造（回测门禁挂接）：任务绑定 gate_id 时（回测任务），执行完成（含失败）
+ * 后回调 GateJudgeService.judgeAndRecord 判定并落 eval_gate_record。
+ * <p>
+ * 成本提示：LLM judge 调用与执行耗时随 k 线性放大（串行 trial、串行样本）。
  */
 @Slf4j
 @Service
@@ -53,6 +67,7 @@ public class EvalExecutionService {
     private final ILlmJudgePort llmJudgePort;
     private final IEvalMetricsPort evalMetricsPort;
     private final RubricService rubricService;
+    private final GateJudgeService gateJudgeService;
 
     public EvalExecutionService(IEvalTaskRepository evalTaskRepository,
                                 IEvalResultRepository evalResultRepository,
@@ -61,7 +76,8 @@ public class EvalExecutionService {
                                 IAnswerSourceProvider answerSourceProvider,
                                 ILlmJudgePort llmJudgePort,
                                 IEvalMetricsPort evalMetricsPort,
-                                RubricService rubricService) {
+                                RubricService rubricService,
+                                GateJudgeService gateJudgeService) {
         this.evalTaskRepository = evalTaskRepository;
         this.evalResultRepository = evalResultRepository;
         this.evalDatasetRepository = evalDatasetRepository;
@@ -70,6 +86,7 @@ public class EvalExecutionService {
         this.llmJudgePort = llmJudgePort;
         this.evalMetricsPort = evalMetricsPort;
         this.rubricService = rubricService;
+        this.gateJudgeService = gateJudgeService;
     }
 
     /**
@@ -84,37 +101,65 @@ public class EvalExecutionService {
                 log.warn("评测任务无可执行条目, taskId={}, datasetId={}", taskId, task.getDatasetId());
                 evalTaskRepository.updateStatus(taskId, "FAILED");
                 evalMetricsPort.recordTaskFinished(task.getEvalType(), "FAILED");
+                // R4：回测任务空数据集也走门禁判定（summary=null → BLOCK，防静默放行）
+                if (task.getGateId() != null && !task.getGateId().isBlank()) {
+                    gateJudgeService.judgeAndRecord(task, null);
+                }
                 return;
             }
 
             String evalType = task.getEvalType() == null ? "ANSWER_QUALITY" : task.getEvalType();
             // 综合分权重按 evalType 从 Rubric 解析一次（任务内复用；仓储异常时内置兜底）
             Map<String, Double> weights = rubricService.resolveWeights(evalType);
-            int total = items.size();
-            evalTaskRepository.updateTotalCount(taskId, total);
+            // Pass@k：试验次数 k（默认 1 保持旧行为）与样本达标阈值（NULL=默认 0.5）
+            int trials = task.getTrials() == null || task.getTrials() < 1 ? 1 : task.getTrials();
+            double passThreshold = task.getPassThreshold() == null
+                    ? PassAtKCalculator.DEFAULT_PASS_THRESHOLD : task.getPassThreshold();
+            int samples = items.size();
+            // 进度口径按总 trial 比例：total = 样本数 × k
+            evalTaskRepository.updateTotalCount(taskId, samples * trials);
             int completed = 0;
             double sumOverall = 0.0;
             long totalUnknownDims = 0;
             long totalJudgeDims = 0;
+            // per-trial 综合分累计（下标 = trialNo-1）——方差报告数据源
+            double[] trialSums = new double[trials];
+            int[] trialCounts = new int[trials];
+            // 维度分累计（key 与 Rubric 维度 key 对齐）——门禁安全维度数据源
+            Map<String, Double> dimSums = new LinkedHashMap<>();
+            // per-sample per-trial 综合分（样本下标 → 各 trial 分）——Pass@k 数据源
+            List<List<Double>> sampleScores = new ArrayList<>(samples);
+            for (int i = 0; i < samples; i++) {
+                sampleScores.add(new ArrayList<>(trials));
+            }
             List<EvalResultEntity> buffer = new ArrayList<>();
 
-            for (EvalDatasetItem item : items) {
-                EvalSample sample = evaluateOne(taskId, evalType, weights, item);
-                EvalResultEntity result = sample.result();
-                buffer.add(result);
-                completed++;
-                sumOverall += result.getOverallScore() == null ? 0.0 : result.getOverallScore();
-                totalUnknownDims += sample.unknownDims();
-                totalJudgeDims += sample.judgeDims();
-                evalMetricsPort.recordScore(evalType, result.getOverallScore());
-                if (result.getHallucinationFlag() != null && result.getHallucinationFlag() == 1) {
-                    evalMetricsPort.recordHallucination(evalType);
-                }
+            for (int trialNo = 1; trialNo <= trials; trialNo++) {
+                // 每 trial 独立走答案源：在线回放天然随机 / 离线复用确定性（见类注释 R3 说明）
+                for (int idx = 0; idx < items.size(); idx++) {
+                    EvalDatasetItem item = items.get(idx);
+                    EvalSample sample = evaluateOne(taskId, evalType, weights, item, trialNo);
+                    EvalResultEntity result = sample.result();
+                    buffer.add(result);
+                    completed++;
+                    double overall = result.getOverallScore() == null ? 0.0 : result.getOverallScore();
+                    sumOverall += overall;
+                    trialSums[trialNo - 1] += overall;
+                    trialCounts[trialNo - 1]++;
+                    sampleScores.get(idx).add(overall);
+                    totalUnknownDims += sample.unknownDims();
+                    totalJudgeDims += sample.judgeDims();
+                    sample.metricScores().forEach((k, v) -> dimSums.merge(k, v, Double::sum));
+                    evalMetricsPort.recordScore(evalType, result.getOverallScore());
+                    if (result.getHallucinationFlag() != null && result.getHallucinationFlag() == 1) {
+                        evalMetricsPort.recordHallucination(evalType);
+                    }
 
-                // 分批落库 + 回写进度，避免长任务内存堆积、前端长时间无进度
-                if (buffer.size() >= PROGRESS_BATCH) {
-                    flush(buffer, taskId, completed, sumOverall);
-                    buffer.clear();
+                    // 分批落库 + 回写进度，避免长任务内存堆积、前端长时间无进度
+                    if (buffer.size() >= PROGRESS_BATCH) {
+                        flush(buffer, taskId, completed, sumOverall);
+                        buffer.clear();
+                    }
                 }
             }
             if (!buffer.isEmpty()) {
@@ -122,18 +167,40 @@ public class EvalExecutionService {
                 buffer.clear();
             }
 
-            double avgOverall = total == 0 ? 0.0 : sumOverall / total;
+            // Pass@k 任务级汇总：通过率（k 次至少 1 次达标口径）+ per-trial 均值标准差
+            double avgOverall = completed == 0 ? 0.0 : sumOverall / completed;
+            List<Double> trialMeans = new ArrayList<>(trials);
+            for (int t = 0; t < trials; t++) {
+                trialMeans.add(trialCounts[t] == 0 ? 0.0 : trialSums[t] / trialCounts[t]);
+            }
+            double passRate = sampleScores.isEmpty() ? 0.0
+                    : (double) sampleScores.stream()
+                            .filter(scores -> scores.stream().anyMatch(s -> s != null && s >= passThreshold))
+                            .count() / sampleScores.size();
+            double stdDev = PassAtKCalculator.stdDevOfTrialMeans(trialMeans);
+
             evalTaskRepository.updateProgress(taskId, completed, round(avgOverall));
             evalTaskRepository.updateStatus(taskId, "COMPLETED");
+            evalTaskRepository.updatePassStatistics(taskId, round(passRate), round(stdDev));
             evalMetricsPort.recordTaskFinished(evalType, "COMPLETED");
             evalMetricsPort.recordTaskDuration(evalType, System.currentTimeMillis() - startMs);
             // 任务级 unknown 占比（R1：「标准不清晰」可度量；仅含 LLM 评判维度）
             if (totalJudgeDims > 0) {
                 evalMetricsPort.recordUnknownRatio(evalType, round((double) totalUnknownDims / totalJudgeDims));
             }
-            log.info("评测任务完成, taskId={}, 条目={}, 平均综合分={}, unknown维度占比={}",
-                    taskId, total, round(avgOverall),
+            log.info("评测任务完成, taskId={}, 条目={}, trials={}, 平均综合分={}, passRate={}, trial方差(标准差)={}, unknown维度占比={}",
+                    taskId, samples, trials, round(avgOverall), round(passRate), round(stdDev),
                     totalJudgeDims == 0 ? 0.0 : round((double) totalUnknownDims / totalJudgeDims));
+
+            // R4 回测门禁挂接：绑定 gate 的任务（回测）完成后判定并落 eval_gate_record
+            if (task.getGateId() != null && !task.getGateId().isBlank()) {
+                gateJudgeService.judgeAndRecord(task, TaskEvalSummary.builder()
+                        .taskId(taskId).trials(trials).passThreshold(passThreshold)
+                        .sampleCount(samples).avgOverall(round(avgOverall))
+                        .passRate(round(passRate)).scoreStdDev(round(stdDev))
+                        .dimensionAvg(PassAtKCalculator.dimensionAverage(dimSums, completed))
+                        .build());
+            }
         } catch (Exception e) {
             log.error("评测任务执行失败, taskId={}", taskId, e);
             try {
@@ -142,11 +209,16 @@ public class EvalExecutionService {
             } catch (Exception ignored) {
                 // 置失败本身异常忽略
             }
+            // R4：回测任务失败也走门禁判定（summary=null → BLOCK，防止回测挂掉静默放行）
+            if (task.getGateId() != null && !task.getGateId().isBlank()) {
+                gateJudgeService.judgeAndRecord(task, null);
+            }
         }
     }
 
     /** 评测单条样本 */
-    private EvalSample evaluateOne(String taskId, String evalType, Map<String, Double> weights, EvalDatasetItem item) {
+    private EvalSample evaluateOne(String taskId, String evalType, Map<String, Double> weights,
+                                   EvalDatasetItem item, int trialNo) {
         String query = item.getQuery();
         String standardAnswer = item.getStandardAnswer();
         List<String> standardChunks = item.getStandardChunks() == null ? List.of() : item.getStandardChunks();
@@ -230,6 +302,8 @@ public class EvalExecutionService {
         // 6. 组装明细
         JSONObject detail = new JSONObject();
         detail.put("evalType", evalType);
+        // 试验序号（工单 0135 R3：k=1 时恒为 1，与旧行为一致）
+        detail.put("trialNo", trialNo);
         // 综合分权重版本，便于横向对比区分口径（v2 纳入 mrr/ndcg/context/answerCorrectness；
         // v2-rubric 权重改由 Rubric 配置驱动，口径与 v2 内置种子一致）
         detail.put("weightVersion", "v2-rubric");
@@ -256,6 +330,7 @@ public class EvalExecutionService {
 
         EvalResultEntity result = EvalResultEntity.builder()
                 .taskId(taskId)
+                .trialNo(trialNo)
                 .traceId(traceId)
                 .queryText(query)
                 .standardAnswer(standardAnswer)
@@ -287,7 +362,7 @@ public class EvalExecutionService {
                 .reasoningScore(reasoningScore != null ? round(reasoningScore) : null)
                 .agentDecisionScore(agentDecisionScore != null ? round(agentDecisionScore) : null)
                 .build();
-        return new EvalSample(result, unknownDims, judgeDims);
+        return new EvalSample(result, unknownDims, judgeDims, metricScores);
     }
 
     /**
@@ -427,8 +502,9 @@ public class EvalExecutionService {
     /** Agent 决策评测指标 */
     private record AgentDecisionMetrics(double intentScore, double branchScore, double reasoningScore, double overallScore) {}
 
-    /** 单条样本执行产物（结果 + unknown 统计） */
-    private record EvalSample(EvalResultEntity result, int unknownDims, int judgeDims) {}
+    /** 单条样本执行产物（结果 + unknown 统计 + 维度分表，供任务级 Pass@k/门禁聚合） */
+    private record EvalSample(EvalResultEntity result, int unknownDims, int judgeDims,
+                              Map<String, Double> metricScores) {}
 
     private void flush(List<EvalResultEntity> buffer, String taskId, int completed, double sumOverall) {
         evalResultRepository.batchSave(new ArrayList<>(buffer));

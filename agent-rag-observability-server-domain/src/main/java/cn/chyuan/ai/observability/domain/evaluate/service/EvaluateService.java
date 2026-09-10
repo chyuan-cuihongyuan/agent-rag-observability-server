@@ -45,6 +45,8 @@ public class EvaluateService {
         entity.setCompletedCount(entity.getCompletedCount() == null ? 0 : entity.getCompletedCount());
         entity.setModelVersion(entity.getModelVersion() == null ? "" : entity.getModelVersion());
         entity.setRagStrategyVersion(entity.getRagStrategyVersion() == null ? "" : entity.getRagStrategyVersion());
+        // Pass@k（工单 0135 R3）：trials 默认 1 保持旧行为；阈值默认 0.5（沿用 Rubric 达标线）
+        entity.setTrials(entity.getTrials() == null || entity.getTrials() < 1 ? 1 : entity.getTrials());
         entity.setCreateTime(LocalDateTime.now().format(FMT));
         entity.setUpdateTime(LocalDateTime.now().format(FMT));
         evalTaskRepository.save(entity);
@@ -74,8 +76,9 @@ public class EvaluateService {
         evalResultRepository.batchSave(entities);
     }
 
-    public List<EvalResultEntity> queryResultsByTaskId(String taskId, int page, int size) {
-        return evalResultRepository.queryByTaskId(taskId, page, size);
+    /** trial 为 null 时查全部 trial（兼容既有调用方）；非空时按 trial_no 过滤（工单 0135 R3） */
+    public List<EvalResultEntity> queryResultsByTaskId(String taskId, Integer trial, int page, int size) {
+        return evalResultRepository.queryByTaskId(taskId, trial, page, size);
     }
 
     public long countResultsByTaskId(String taskId) {
@@ -289,7 +292,7 @@ public class EvaluateService {
         List<EvalResultEntity> batch;
 
         do {
-            batch = evalResultRepository.queryByTaskId(taskId, page, pageSize);
+            batch = evalResultRepository.queryByTaskId(taskId, null, page, pageSize);
             for (EvalResultEntity r : batch) {
                 sumOverall += nz(r.getOverallScore());
                 sumRecall += nz(r.getRecallScore());

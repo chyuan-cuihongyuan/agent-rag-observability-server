@@ -45,6 +45,8 @@ public class EvalExecutionServiceWeightTest {
     private IEvalMetricsPort evalMetricsPort;
     @Mock
     private RubricService rubricService;
+    @Mock
+    private GateJudgeService gateJudgeService;
 
     @InjectMocks
     private EvalExecutionService service;

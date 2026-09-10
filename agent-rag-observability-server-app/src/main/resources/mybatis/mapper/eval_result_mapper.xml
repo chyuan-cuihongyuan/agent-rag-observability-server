@@ -1,9 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- 评测结果表 mapper（工单 0135 R3 增列 trial_no；selectByTaskId 支持可选 trial 过滤）：
+     双方言通用语句（分页 LIMIT #{size} OFFSET #{offset}） -->
 <mapper namespace="cn.chyuan.ai.observability.infrastructure.dao.mapper.EvalResultMapper">
 
     <insert id="insert" parameterType="cn.chyuan.ai.observability.infrastructure.dao.po.EvalResultPO" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO eval_result (task_id, trace_id, query_text, standard_answer, actual_answer,
+        INSERT INTO eval_result (task_id, trial_no, trace_id, query_text, standard_answer, actual_answer,
                                 recall_score, precision_score, f1_score, top3_hit_rate,
                                 mrr_score, ndcg_score, map_score, answer_similarity,
                                 context_precision, context_recall, context_relevance,
@@ -11,7 +13,7 @@
                                 answer_correctness, overall_score, eval_detail, create_time,
                                 tool_selection_score, tool_param_score, tool_call_score,
                                 intent_score, branch_score, reasoning_score, agent_decision_score)
-        VALUES (#{taskId}, #{traceId}, #{queryText}, #{standardAnswer}, #{actualAnswer},
+        VALUES (#{taskId}, #{trialNo}, #{traceId}, #{queryText}, #{standardAnswer}, #{actualAnswer},
                 #{recallScore}, #{precisionScore}, #{f1Score}, #{top3HitRate},
                 #{mrrScore}, #{ndcgScore}, #{mapScore}, #{answerSimilarity},
                 #{contextPrecision}, #{contextRecall}, #{contextRelevance},
@@ -22,7 +24,7 @@
     </insert>
 
     <insert id="batchInsert">
-        INSERT INTO eval_result (task_id, trace_id, query_text, standard_answer, actual_answer,
+        INSERT INTO eval_result (task_id, trial_no, trace_id, query_text, standard_answer, actual_answer,
                                 recall_score, precision_score, f1_score, top3_hit_rate,
                                 mrr_score, ndcg_score, map_score, answer_similarity,
                                 context_precision, context_recall, context_relevance,
@@ -32,7 +34,7 @@
                                 intent_score, branch_score, reasoning_score, agent_decision_score)
         VALUES
         <foreach collection="list" item="item" separator=",">
-            (#{item.taskId}, #{item.traceId}, #{item.queryText}, #{item.standardAnswer}, #{item.actualAnswer},
+            (#{item.taskId}, #{item.trialNo}, #{item.traceId}, #{item.queryText}, #{item.standardAnswer}, #{item.actualAnswer},
              #{item.recallScore}, #{item.precisionScore}, #{item.f1Score}, #{item.top3HitRate},
              #{item.mrrScore}, #{item.ndcgScore}, #{item.mapScore}, #{item.answerSimilarity},
              #{item.contextPrecision}, #{item.contextRecall}, #{item.contextRelevance},
@@ -43,8 +45,9 @@
         </foreach>
     </insert>
 
+    <!-- trial 维度过滤查询：trial 为 null 时查全部 trial（兼容既有调用方） -->
     <select id="selectByTaskId" resultType="cn.chyuan.ai.observability.infrastructure.dao.po.EvalResultPO">
-        SELECT id, task_id, trace_id, query_text, standard_answer, actual_answer,
+        SELECT id, task_id, trial_no, trace_id, query_text, standard_answer, actual_answer,
                recall_score, precision_score, f1_score, top3_hit_rate,
                mrr_score, ndcg_score, map_score, answer_similarity,
                context_precision, context_recall, context_relevance,
@@ -52,7 +55,11 @@
                answer_correctness, overall_score, eval_detail, create_time,
                tool_selection_score, tool_param_score, tool_call_score,
                intent_score, branch_score, reasoning_score, agent_decision_score
-        FROM eval_result WHERE task_id = #{taskId} ORDER BY create_time DESC LIMIT #{size} OFFSET #{offset}
+        FROM eval_result WHERE task_id = #{taskId}
+        <if test="trial != null">
+            AND trial_no = #{trial}
+        </if>
+        ORDER BY create_time DESC LIMIT #{size} OFFSET #{offset}
     </select>
 
     <select id="countByTaskId" resultType="long">

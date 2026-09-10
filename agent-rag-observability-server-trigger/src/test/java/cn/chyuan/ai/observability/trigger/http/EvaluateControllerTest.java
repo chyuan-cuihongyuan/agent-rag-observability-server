@@ -208,18 +208,40 @@ public class EvaluateControllerTest {
     @Test
     @DisplayName("查询评测结果 — 成功返回结果列表")
     public void testQueryResults_Success() {
-        // 准备
-        when(evaluateService.queryResultsByTaskId("task-001", 1, 20))
+        // 准备（trial 缺省查全部 trial，工单 0135 R3 口径）
+        when(evaluateService.queryResultsByTaskId("task-001", null, 1, 20))
                 .thenReturn(Collections.emptyList());
         when(evaluateService.countResultsByTaskId("task-001")).thenReturn(0L);
 
         // 执行
-        Response<Map<String, Object>> result = controller.queryResults("task-001", 1, 20);
+        Response<Map<String, Object>> result = controller.queryResults("task-001", 1, 20, null);
 
         // 验证
         assertEquals(ResponseCode.SUCCESS, result.getCode(), "响应码应为 0000");
         assertTrue(result.getData().containsKey("list"), "应包含 list");
         assertTrue(result.getData().containsKey("total"), "应包含 total");
+    }
+
+    @Test
+    @DisplayName("查询评测结果 — trial 过滤透传（工单 0135 R3）")
+    public void testQueryResults_TrialFilter() {
+        when(evaluateService.queryResultsByTaskId("task-001", 2, 1, 20))
+                .thenReturn(Collections.emptyList());
+        when(evaluateService.countResultsByTaskId("task-001")).thenReturn(3L);
+
+        Response<Map<String, Object>> result = controller.queryResults("task-001", 1, 20, 2);
+
+        assertEquals(ResponseCode.SUCCESS, result.getCode());
+        verify(evaluateService).queryResultsByTaskId("task-001", 2, 1, 20);
+    }
+
+    @Test
+    @DisplayName("查询评测结果 — 非法 trial（<1）返回参数错误")
+    public void testQueryResults_IllegalTrial() {
+        Response<Map<String, Object>> result = controller.queryResults("task-001", 1, 20, 0);
+
+        assertEquals(ResponseCode.ILLEGAL_PARAMETER, result.getCode());
+        verify(evaluateService, never()).queryResultsByTaskId(anyString(), any(), anyInt(), anyInt());
     }
 
     @Test

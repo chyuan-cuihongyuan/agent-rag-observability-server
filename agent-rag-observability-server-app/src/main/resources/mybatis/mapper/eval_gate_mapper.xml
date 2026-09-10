@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- 评测门禁规则表 mapper（工单 0136 R4）：双方言通用语句（分页 LIMIT #{size} OFFSET #{offset}）；
+     safety_dims/score_thresholds JSON 结构与维度存在性由应用层（GateService）校验 -->
+<mapper namespace="cn.chyuan.ai.observability.infrastructure.dao.mapper.EvalGateMapper">
+
+    <insert id="insert" parameterType="cn.chyuan.ai.observability.infrastructure.dao.po.EvalGatePO" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO eval_gate (gate_id, name, safety_dims, score_thresholds, trials, enabled, create_time, update_time)
+        VALUES (#{gateId}, #{name}, #{safetyDims}, #{scoreThresholds}, #{trials}, #{enabled}, #{createTime}, #{updateTime})
+    </insert>
+
+    <select id="selectByGateId" resultType="cn.chyuan.ai.observability.infrastructure.dao.po.EvalGatePO">
+        SELECT id, gate_id, name, safety_dims, score_thresholds, trials, enabled, create_time, update_time
+        FROM eval_gate WHERE gate_id = #{gateId}
+    </select>
+
+    <select id="selectByName" resultType="cn.chyuan.ai.observability.infrastructure.dao.po.EvalGatePO">
+        SELECT id, gate_id, name, safety_dims, score_thresholds, trials, enabled, create_time, update_time
+        FROM eval_gate WHERE name = #{name}
+    </select>
+
+    <select id="selectList" resultType="cn.chyuan.ai.observability.infrastructure.dao.po.EvalGatePO">
+        SELECT id, gate_id, name, safety_dims, score_thresholds, trials, enabled, create_time, update_time
+        FROM eval_gate ORDER BY create_time DESC LIMIT #{size} OFFSET #{offset}
+    </select>
+
+    <update id="update" parameterType="cn.chyuan.ai.observability.infrastructure.dao.po.EvalGatePO">
+        UPDATE eval_gate
+        SET name = #{name}, safety_dims = #{safetyDims}, score_thresholds = #{scoreThresholds},
+            trials = #{trials}, enabled = #{enabled}, update_time = #{updateTime}
+        WHERE gate_id = #{gateId}
+    </update>
+
+</mapper>

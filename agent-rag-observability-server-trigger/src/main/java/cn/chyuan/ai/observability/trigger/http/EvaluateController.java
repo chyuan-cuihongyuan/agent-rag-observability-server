@@ -146,7 +146,10 @@ public class EvaluateController {
         EvalTaskEntity entity = EvalTaskEntity.builder()
                 .taskName(dto.getTaskName()).evalType(dto.getEvalType())
                 .datasetId(dto.getDatasetId()).modelVersion(dto.getModelVersion())
-                .ragStrategyVersion(dto.getRagStrategyVersion()).build();
+                .ragStrategyVersion(dto.getRagStrategyVersion())
+                // Pass@k（工单 0135 R3）：trials 默认 1（服务层兜底）；阈值默认 0.5（执行层兜底）
+                .trials(dto.getTrials()).passThreshold(dto.getPassThreshold())
+                .build();
         String taskId = evaluateService.createTask(entity);
         return Response.success(taskId);
     }
@@ -160,16 +163,23 @@ public class EvaluateController {
             return Response.fail(ResponseCode.ILLEGAL_PARAMETER, validationError);
         }
         List<EvalTaskEntity> tasks = evaluateService.queryTaskList(page, size);
-        List<EvalTaskDTO> dtoList = tasks.stream().map(entity -> EvalTaskDTO.builder()
+        List<EvalTaskDTO> dtoList = tasks.stream().map(this::toTaskDto).toList();
+        return Response.success(Map.of("list", dtoList, "page", page, "size", size));
+    }
+
+    /** 任务实体 → DTO（含 Pass@k 汇总字段与回测 gate 绑定，工单 0135 R3 / 0136 R4） */
+    private EvalTaskDTO toTaskDto(EvalTaskEntity entity) {
+        return EvalTaskDTO.builder()
                 .taskId(entity.getTaskId()).taskName(entity.getTaskName())
                 .evalType(entity.getEvalType()).datasetId(entity.getDatasetId())
                 .status(entity.getStatus()).modelVersion(entity.getModelVersion())
                 .ragStrategyVersion(entity.getRagStrategyVersion())
                 .totalCount(entity.getTotalCount()).completedCount(entity.getCompletedCount())
                 .avgOverallScore(entity.getAvgOverallScore())
-                .createTime(entity.getCreateTime()).updateTime(entity.getUpdateTime()).build()
-        ).toList();
-        return Response.success(Map.of("list", dtoList, "page", page, "size", size));
+                .trials(entity.getTrials()).passThreshold(entity.getPassThreshold())
+                .passRate(entity.getPassRate()).scoreStdDev(entity.getScoreStdDev())
+                .gateId(entity.getGateId())
+                .createTime(entity.getCreateTime()).updateTime(entity.getUpdateTime()).build();
     }
 
     @GetMapping("/task/{taskId}")
@@ -180,21 +190,14 @@ public class EvaluateController {
         }
         EvalTaskEntity entity = evaluateService.queryTask(taskId);
         if (entity == null) return Response.success(null);
-        EvalTaskDTO dto = EvalTaskDTO.builder()
-                .taskId(entity.getTaskId()).taskName(entity.getTaskName())
-                .evalType(entity.getEvalType()).datasetId(entity.getDatasetId())
-                .status(entity.getStatus()).modelVersion(entity.getModelVersion())
-                .ragStrategyVersion(entity.getRagStrategyVersion())
-                .totalCount(entity.getTotalCount()).completedCount(entity.getCompletedCount())
-                .avgOverallScore(entity.getAvgOverallScore())
-                .createTime(entity.getCreateTime()).updateTime(entity.getUpdateTime()).build();
-        return Response.success(dto);
+        return Response.success(toTaskDto(entity));
     }
 
+    /** 保存评测结果（trialNo 随 per-trial 结果透传，工单 0135 R3） */
     @PostMapping("/result")
     public Response<String> saveResult(@RequestBody EvalResultDTO dto) {
         EvalResultEntity entity = EvalResultEntity.builder()
-                .taskId(dto.getTaskId()).traceId(dto.getTraceId())
+                .taskId(dto.getTaskId()).trialNo(dto.getTrialNo()).traceId(dto.getTraceId())
                 .queryText(dto.getQueryText()).standardAnswer(dto.getStandardAnswer())
                 .actualAnswer(dto.getActualAnswer()).recallScore(dto.getRecallScore())
                 .precisionScore(dto.getPrecisionScore()).f1Score(dto.getF1Score())
@@ -226,10 +229,15 @@ public class EvaluateController {
         return Response.success(taskId);
     }
 
+    /**
+     * 查询评测结果（工单 0135 R3：可选 trial 过滤维度——
+     * trial 缺省查全部 trial 的结果行；trial=1..k 查指定试验）。
+     */
     @GetMapping("/result/{taskId}")
     public Response<Map<String, Object>> queryResults(@PathVariable String taskId,
                                                        @RequestParam(defaultValue = "1") int page,
-                                                       @RequestParam(defaultValue = "20") int size) {
+                                                       @RequestParam(defaultValue = "20") int size,
+                                                       @RequestParam(required = false) Integer trial) {
         String validationError = RequestValidator.validateId("taskId", taskId);
         if (validationError == null) {
             validationError = RequestValidator.validatePage(page, size);
@@ -237,7 +245,10 @@ public class EvaluateController {
         if (validationError != null) {
             return Response.fail(ResponseCode.ILLEGAL_PARAMETER, validationError);
         }
-        List<EvalResultEntity> results = evaluateService.queryResultsByTaskId(taskId, page, size);
+        if (trial != null && trial < 1) {
+            return Response.fail(ResponseCode.ILLEGAL_PARAMETER, "trial 必须 >= 1（试验序号 1..k）");
+        }
+        List<EvalResultEntity> results = evaluateService.queryResultsByTaskId(taskId, trial, page, size);
         long total = evaluateService.countResultsByTaskId(taskId);
         return Response.success(Map.of("list", results, "total", total, "page", page, "size", size));
     }

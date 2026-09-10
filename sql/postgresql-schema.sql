@@ -3,6 +3,9 @@
 -- 工单 0123（三期 O3：PG 全量 DDL 翻译）补账：为从未入库过 DDL 的表补建脚本，2026-09-10。
 -- 工单 0133/0134（三期 R1/R2）：eval_dataset 增列 version/pool/source/frozen 并入建表
 --   （既有库手工执行表 6 后注释中的 ALTER）；新增第 9 表 eval_rubric，2026-09-10。
+-- 工单 0135/0136（三期 R3/R4）：eval_task 增列 trials/pass_threshold/pass_rate/score_std_dev/gate_id、
+--   eval_result 增列 trial_no 并入建表（既有库手工执行表 7/8 后注释中的 ALTER）；
+--   新增第 10/11 表 eval_gate、eval_gate_record，2026-09-10。
 -- 口径：
 --   (1) agent_decision_log / rag_retrieval_log / chat_result_log 三表以
 --       docs/02-agent-rag-observability-server/09-补充技术细节.md 第 1040-1128 行
@@ -260,7 +263,8 @@ CREATE INDEX IF NOT EXISTS idx_eval_dataset_pool ON eval_dataset (pool);
 -- CREATE INDEX IF NOT EXISTS idx_eval_dataset_name_version ON eval_dataset (dataset_name, version);
 -- CREATE INDEX IF NOT EXISTS idx_eval_dataset_pool ON eval_dataset (pool);
 
--- 7. 评测任务表（反推：eval_task_mapper.xml 全部 SQL 列集 + EvalTaskPO）
+-- 7. 评测任务表（反推：eval_task_mapper.xml 全部 SQL 列集 + EvalTaskPO；
+--    工单 0135 R3 增列 trials/pass_threshold/pass_rate/score_std_dev、工单 0136 R4 增列 gate_id 已并入建表）
 CREATE TABLE IF NOT EXISTS eval_task (
     id                   BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     task_id              VARCHAR(64)   NOT NULL,
@@ -273,6 +277,11 @@ CREATE TABLE IF NOT EXISTS eval_task (
     model_version        VARCHAR(64)   DEFAULT NULL,
     rag_strategy_version VARCHAR(64)   DEFAULT NULL,
     avg_overall_score    DECIMAL(10,6) DEFAULT NULL,
+    trials               INT           NOT NULL DEFAULT 1,
+    pass_threshold       DECIMAL(10,6) DEFAULT NULL,
+    pass_rate            DECIMAL(10,6) DEFAULT NULL,
+    score_std_dev        DECIMAL(10,6) DEFAULT NULL,
+    gate_id              VARCHAR(64)   DEFAULT NULL,
     create_time          TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     update_time          TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT uk_task_id UNIQUE (task_id)
@@ -283,20 +292,37 @@ COMMENT ON COLUMN eval_task.task_name IS '任务名称';
 COMMENT ON COLUMN eval_task.eval_type IS '评测类型（RAG/AGENT 等）';
 COMMENT ON COLUMN eval_task.dataset_id IS '关联数据集业务ID';
 COMMENT ON COLUMN eval_task.status IS '任务状态（PENDING/RUNNING/COMPLETED/FAILED）';
-COMMENT ON COLUMN eval_task.total_count IS '总条目数（PO Integer→INT）';
-COMMENT ON COLUMN eval_task.completed_count IS '已完成条目数（PO Integer→INT）';
+COMMENT ON COLUMN eval_task.total_count IS '总条目数（样本数×trials，PO Integer→INT）';
+COMMENT ON COLUMN eval_task.completed_count IS '已完成条目数（含全部 trial 累计，PO Integer→INT）';
 COMMENT ON COLUMN eval_task.model_version IS '模型版本';
 COMMENT ON COLUMN eval_task.rag_strategy_version IS 'RAG策略版本';
-COMMENT ON COLUMN eval_task.avg_overall_score IS '平均总分（PO Double→DECIMAL(10,6)）';
+COMMENT ON COLUMN eval_task.avg_overall_score IS '平均总分（全部 trial 全部样本均值，PO Double→DECIMAL(10,6)）';
+COMMENT ON COLUMN eval_task.trials IS '试验次数 k（工单 0135 R3 Pass@k；1=旧行为）';
+COMMENT ON COLUMN eval_task.pass_threshold IS '样本达标阈值（NULL=应用默认 0.5，沿用 Rubric 达标线）';
+COMMENT ON COLUMN eval_task.pass_rate IS '通过率 Pass@k（k 次 trial 至少 1 次达标的样本占比，完成时回写）';
+COMMENT ON COLUMN eval_task.score_std_dev IS 'per-trial 综合分均值的标准差（完成时回写，总体口径）';
+COMMENT ON COLUMN eval_task.gate_id IS '绑定的门禁规则 ID（工单 0136 R4 回测；非空时完成回调判定）';
 COMMENT ON COLUMN eval_task.create_time IS '创建时间';
 COMMENT ON COLUMN eval_task.update_time IS '更新时间（应用层维护）';
 CREATE INDEX IF NOT EXISTS idx_eval_task_status_update ON eval_task (status, update_time);
+CREATE INDEX IF NOT EXISTS idx_eval_task_gate_id ON eval_task (gate_id);
+
+-- 既有库增量升级（手工执行；工单 0135/0136 R3/R4，对已存在的旧 eval_task）：
+-- ALTER TABLE eval_task
+--     ADD COLUMN trials INT NOT NULL DEFAULT 1,
+--     ADD COLUMN pass_threshold DECIMAL(10,6) DEFAULT NULL,
+--     ADD COLUMN pass_rate DECIMAL(10,6) DEFAULT NULL,
+--     ADD COLUMN score_std_dev DECIMAL(10,6) DEFAULT NULL,
+--     ADD COLUMN gate_id VARCHAR(64) DEFAULT NULL;
+-- CREATE INDEX IF NOT EXISTS idx_eval_task_gate_id ON eval_task (gate_id);
 
 -- 8. 评测结果表（反推：eval_result_mapper.xml INSERT/batchInsert/SELECT 全部 31 业务列
---    逐列核对 + EvalResultPO；分数列 PO 均 Double → DECIMAL(10,6)）
+--    逐列核对 + EvalResultPO；分数列 PO 均 Double → DECIMAL(10,6)；
+--    工单 0135 R3 增列 trial_no 已并入建表）
 CREATE TABLE IF NOT EXISTS eval_result (
     id                   BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     task_id              VARCHAR(64)   NOT NULL,
+    trial_no             INT           NOT NULL DEFAULT 1,
     trace_id             VARCHAR(64)   DEFAULT NULL,
     query_text           TEXT,
     standard_answer      TEXT,
@@ -330,6 +356,7 @@ CREATE TABLE IF NOT EXISTS eval_result (
 );
 COMMENT ON TABLE eval_result IS '评测结果表';
 COMMENT ON COLUMN eval_result.task_id IS '评测任务业务ID（一任务多条明细）';
+COMMENT ON COLUMN eval_result.trial_no IS '试验序号（1..k；k=1 时恒为 1，工单 0135 R3）';
 COMMENT ON COLUMN eval_result.trace_id IS '链路追踪ID';
 COMMENT ON COLUMN eval_result.query_text IS '评测问题';
 COMMENT ON COLUMN eval_result.standard_answer IS '标准答案';
@@ -361,6 +388,12 @@ COMMENT ON COLUMN eval_result.reasoning_score IS '推理过程分项（结构化
 COMMENT ON COLUMN eval_result.agent_decision_score IS 'Agent 决策总分项（结构化落库）';
 COMMENT ON COLUMN eval_result.create_time IS '创建时间';
 CREATE INDEX IF NOT EXISTS idx_eval_result_task_time ON eval_result (task_id, create_time);
+CREATE INDEX IF NOT EXISTS idx_eval_result_task_trial ON eval_result (task_id, trial_no);
+
+-- 既有库增量升级（手工执行；工单 0135 R3，对已存在的旧 eval_result）：
+-- ALTER TABLE eval_result
+--     ADD COLUMN trial_no INT NOT NULL DEFAULT 1;
+-- CREATE INDEX IF NOT EXISTS idx_eval_result_task_trial ON eval_result (task_id, trial_no);
 
 -- 9. 评测 Rubric 评判标准表（工单 0133 R1：eval_rubric_mapper.xml 全部 SQL 列集 + EvalRubricPO）
 CREATE TABLE IF NOT EXISTS eval_rubric (
@@ -390,3 +423,49 @@ COMMENT ON COLUMN eval_rubric.update_time IS '更新时间（应用层维护）'
 CREATE INDEX IF NOT EXISTS idx_eval_rubric_eval_type_enabled ON eval_rubric (eval_type, enabled);
 -- 既有库为空表时直接执行上方 CREATE；dimensions JSON 由应用层（RubricService）校验
 -- 维度 key 唯一 + 权重和=1，库层不额外建 JSON 约束。
+
+-- 10. 评测门禁规则表（工单 0136 R4：分层门禁——安全维度一票否决 + 质量分阈值）
+CREATE TABLE IF NOT EXISTS eval_gate (
+    id               BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    gate_id          VARCHAR(64)  NOT NULL,
+    name             VARCHAR(128) NOT NULL,
+    safety_dims      TEXT,
+    score_thresholds TEXT,
+    trials           INT          NOT NULL DEFAULT 1,
+    enabled          SMALLINT     NOT NULL DEFAULT 1,
+    create_time      TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    update_time      TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uk_gate_id UNIQUE (gate_id),
+    CONSTRAINT uk_gate_name UNIQUE (name)
+);
+COMMENT ON TABLE eval_gate IS '评测门禁规则表';
+COMMENT ON COLUMN eval_gate.gate_id IS '门禁规则业务ID（唯一）';
+COMMENT ON COLUMN eval_gate.name IS '门禁名称（唯一）';
+COMMENT ON COLUMN eval_gate.safety_dims IS '安全维度 JSON 对象 {dim: minSafety}（任一低于下限即一票否决；正向安全分口径，hallucination 配 0.8 等价幻觉率上限 0.2）（PO String→TEXT）';
+COMMENT ON COLUMN eval_gate.score_thresholds IS '质量分阈值 JSON 对象 {metric: min}（metric 可为 overall/passRate 或 Rubric 维度 key）（PO String→TEXT）';
+COMMENT ON COLUMN eval_gate.trials IS '回测评测试验次数 k（取自门禁配置）';
+COMMENT ON COLUMN eval_gate.enabled IS '是否启用：0-停用，1-启用（PO Integer→SMALLINT）';
+COMMENT ON COLUMN eval_gate.create_time IS '创建时间';
+COMMENT ON COLUMN eval_gate.update_time IS '更新时间（应用层维护）';
+-- safety_dims/score_thresholds JSON 结构与维度存在性由应用层（GateService）校验。
+
+-- 11. 评测门禁记录表（工单 0136 R4：回测判定结论落账——PASS/BLOCK + 触发明细）
+CREATE TABLE IF NOT EXISTS eval_gate_record (
+    id             BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    record_id      VARCHAR(64) NOT NULL,
+    gate_id        VARCHAR(64) NOT NULL,
+    task_id        VARCHAR(64) NOT NULL,
+    result         VARCHAR(16) NOT NULL,
+    trigger_detail TEXT,
+    create_time    TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uk_record_id UNIQUE (record_id)
+);
+COMMENT ON TABLE eval_gate_record IS '评测门禁记录表';
+COMMENT ON COLUMN eval_gate_record.record_id IS '门禁记录业务ID（唯一）';
+COMMENT ON COLUMN eval_gate_record.gate_id IS '门禁规则业务ID';
+COMMENT ON COLUMN eval_gate_record.task_id IS '回测评测任务业务ID';
+COMMENT ON COLUMN eval_gate_record.result IS '门禁结论：PASS-放行，BLOCK-拦截（安全越限/分数越限/任务失败）';
+COMMENT ON COLUMN eval_gate_record.trigger_detail IS '触发明细 JSON 数组 [{ruleType,dim,actual,threshold,note}]（PO String→TEXT）';
+COMMENT ON COLUMN eval_gate_record.create_time IS '创建时间';
+CREATE INDEX IF NOT EXISTS idx_eval_gate_record_gate_time ON eval_gate_record (gate_id, create_time);
+CREATE INDEX IF NOT EXISTS idx_eval_gate_record_task ON eval_gate_record (task_id);

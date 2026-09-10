@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- 评测门禁记录表 mapper（工单 0136 R4）：双方言通用语句（分页 LIMIT #{size} OFFSET #{offset}）；
+     gateId 为 null 时查全部记录 -->
+<mapper namespace="cn.chyuan.ai.observability.infrastructure.dao.mapper.EvalGateRecordMapper">
+
+    <insert id="insert" parameterType="cn.chyuan.ai.observability.infrastructure.dao.po.EvalGateRecordPO" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO eval_gate_record (record_id, gate_id, task_id, result, trigger_detail, create_time)
+        VALUES (#{recordId}, #{gateId}, #{taskId}, #{result}, #{triggerDetail}, #{createTime})
+    </insert>
+
+    <!-- 最新一条判定记录：create_time 同秒时以 id 决胜（自增单调） -->
+    <select id="selectLatestByGateId" resultType="cn.chyuan.ai.observability.infrastructure.dao.po.EvalGateRecordPO">
+        SELECT id, record_id, gate_id, task_id, result, trigger_detail, create_time
+        FROM eval_gate_record WHERE gate_id = #{gateId}
+        ORDER BY create_time DESC, id DESC LIMIT 1
+    </select>
+
+    <select id="selectList" resultType="cn.chyuan.ai.observability.infrastructure.dao.po.EvalGateRecordPO">
+        SELECT id, record_id, gate_id, task_id, result, trigger_detail, create_time
+        FROM eval_gate_record
+        <where>
+            <if test="gateId != null">
+                gate_id = #{gateId}
+            </if>
+        </where>
+        ORDER BY create_time DESC, id DESC LIMIT #{size} OFFSET #{offset}
+    </select>
+
+    <select id="selectByTaskId" resultType="cn.chyuan.ai.observability.infrastructure.dao.po.EvalGateRecordPO">
+        SELECT id, record_id, gate_id, task_id, result, trigger_detail, create_time
+        FROM eval_gate_record WHERE task_id = #{taskId}
+    </select>
+
+</mapper>

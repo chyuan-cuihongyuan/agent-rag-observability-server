@@ -13,4 +13,6 @@ public interface IEvalTaskRepository {
     void updateStatus(String taskId, String status);
     void updateProgress(String taskId, int completedCount, Double avgScore);
     void updateTotalCount(String taskId, int totalCount);
+    /** 任务完成时回写 Pass@k 汇总：通过率 + per-trial 综合分标准差（工单 0135 R3） */
+    void updatePassStatistics(String taskId, Double passRate, Double scoreStdDev);
 }

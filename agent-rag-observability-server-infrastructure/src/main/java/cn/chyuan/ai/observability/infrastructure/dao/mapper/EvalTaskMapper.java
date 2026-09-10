@@ -15,4 +15,6 @@ public interface EvalTaskMapper {
     void updateStatus(@Param("taskId") String taskId, @Param("status") String status);
     void updateProgress(@Param("taskId") String taskId, @Param("completedCount") int completedCount, @Param("avgOverallScore") Double avgOverallScore);
     void updateTotalCount(@Param("taskId") String taskId, @Param("totalCount") int totalCount);
+    /** 任务完成时回写 Pass@k 汇总：通过率 + per-trial 综合分标准差（工单 0135 R3） */
+    void updatePassStatistics(@Param("taskId") String taskId, @Param("passRate") Double passRate, @Param("scoreStdDev") Double scoreStdDev);
 }

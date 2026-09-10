@@ -54,11 +54,16 @@ public class EvalTaskRepository implements IEvalTaskRepository {
         evalTaskMapper.updateTotalCount(taskId, totalCount);
     }
 
+    @Override
+    public void updatePassStatistics(String taskId, Double passRate, Double scoreStdDev) {
+        evalTaskMapper.updatePassStatistics(taskId, passRate, scoreStdDev);
+    }
+
     private EvalTaskPO toPO(EvalTaskEntity e) {
-        return EvalTaskPO.builder().taskId(e.getTaskId()).taskName(e.getTaskName()).evalType(e.getEvalType()).datasetId(e.getDatasetId()).status(e.getStatus()).totalCount(e.getTotalCount()).completedCount(e.getCompletedCount()).modelVersion(e.getModelVersion()).ragStrategyVersion(e.getRagStrategyVersion()).avgOverallScore(e.getAvgOverallScore()).createTime(e.getCreateTime()).updateTime(e.getUpdateTime()).build();
+        return EvalTaskPO.builder().taskId(e.getTaskId()).taskName(e.getTaskName()).evalType(e.getEvalType()).datasetId(e.getDatasetId()).status(e.getStatus()).totalCount(e.getTotalCount()).completedCount(e.getCompletedCount()).modelVersion(e.getModelVersion()).ragStrategyVersion(e.getRagStrategyVersion()).avgOverallScore(e.getAvgOverallScore()).trials(e.getTrials()).passThreshold(e.getPassThreshold()).passRate(e.getPassRate()).scoreStdDev(e.getScoreStdDev()).gateId(e.getGateId()).createTime(e.getCreateTime()).updateTime(e.getUpdateTime()).build();
     }
 
     private EvalTaskEntity toEntity(EvalTaskPO p) {
-        return EvalTaskEntity.builder().id(p.getId()).taskId(p.getTaskId()).taskName(p.getTaskName()).evalType(p.getEvalType()).datasetId(p.getDatasetId()).status(p.getStatus()).totalCount(p.getTotalCount()).completedCount(p.getCompletedCount()).modelVersion(p.getModelVersion()).ragStrategyVersion(p.getRagStrategyVersion()).avgOverallScore(p.getAvgOverallScore()).createTime(p.getCreateTime()).updateTime(p.getUpdateTime()).build();
+        return EvalTaskEntity.builder().id(p.getId()).taskId(p.getTaskId()).taskName(p.getTaskName()).evalType(p.getEvalType()).datasetId(p.getDatasetId()).status(p.getStatus()).totalCount(p.getTotalCount()).completedCount(p.getCompletedCount()).modelVersion(p.getModelVersion()).ragStrategyVersion(p.getRagStrategyVersion()).avgOverallScore(p.getAvgOverallScore()).trials(p.getTrials()).passThreshold(p.getPassThreshold()).passRate(p.getPassRate()).scoreStdDev(p.getScoreStdDev()).gateId(p.getGateId()).createTime(p.getCreateTime()).updateTime(p.getUpdateTime()).build();
     }
 }

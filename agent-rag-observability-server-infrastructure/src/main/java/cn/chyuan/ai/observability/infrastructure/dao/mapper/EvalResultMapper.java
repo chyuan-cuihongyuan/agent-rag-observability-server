@@ -10,6 +10,8 @@ import java.util.List;
 public interface EvalResultMapper {
     void insert(EvalResultPO po);
     void batchInsert(@Param("list") List<EvalResultPO> list);
-    List<EvalResultPO> selectByTaskId(@Param("taskId") String taskId, @Param("offset") int offset, @Param("size") int size);
+    /** trial 为 null 时查全部 trial（兼容既有调用方），非空时按 trial_no 过滤（工单 0135 R3） */
+    List<EvalResultPO> selectByTaskId(@Param("taskId") String taskId, @Param("trial") Integer trial,
+                                      @Param("offset") int offset, @Param("size") int size);
     long countByTaskId(@Param("taskId") String taskId);
 }

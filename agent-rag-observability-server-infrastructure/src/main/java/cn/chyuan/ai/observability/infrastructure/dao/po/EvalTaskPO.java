@@ -25,4 +25,16 @@ public class EvalTaskPO implements Serializable {
     private Double avgOverallScore;
     private String createTime;
     private String updateTime;
+
+    // ========== 新增：Pass@k 多试验 + 回测门禁（工单 0135 R3 / 0136 R4） ==========
+    /** 试验次数 k（默认 1 保持旧行为） */
+    private Integer trials;
+    /** 样本达标阈值（NULL=应用默认 0.5） */
+    private Double passThreshold;
+    /** 通过率 Pass@k（完成时回写） */
+    private Double passRate;
+    /** per-trial 综合分标准差（完成时回写） */
+    private Double scoreStdDev;
+    /** 绑定的门禁规则 ID（回测任务） */
+    private String gateId;
 }

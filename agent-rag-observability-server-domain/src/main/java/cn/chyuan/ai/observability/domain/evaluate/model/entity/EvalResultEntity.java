@@ -14,6 +14,8 @@ import java.io.Serializable;
 public class EvalResultEntity implements Serializable {
     private Long id;
     private String taskId;
+    /** 试验序号（1..k；k=1 时恒为 1，工单 0135 R3 Pass@k） */
+    private Integer trialNo;
     private String traceId;
     private String queryText;
     private String standardAnswer;
