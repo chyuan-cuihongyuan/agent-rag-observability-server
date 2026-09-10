@@ -12,6 +12,7 @@ import cn.chyuan.ai.observability.types.response.ResponseCode;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -245,5 +246,135 @@ public class EvaluateControllerTest {
 
         // 验证
         assertEquals(ResponseCode.ILLEGAL_PARAMETER, result.getCode(), "响应码应为参数非法");
+    }
+
+    // ===== 工单 0134 R2：三池筛选 / 版本化 / 冻结端点 =====
+
+    @Test
+    @DisplayName("创建数据集 — 更新已冻结版本被拒绝（冻结不变式）")
+    public void testCreateDataset_FrozenRejected() {
+        // 准备：带 datasetId 更新 → 服务层抛冻结校验异常
+        EvalDatasetDTO dto = new EvalDatasetDTO();
+        dto.setDatasetId("ds-frozen");
+        dto.setDatasetName("黄金集");
+        dto.setItemsJson("[{modified:true}]");
+        doThrow(new IllegalArgumentException("数据集版本已冻结，禁止修改条目: ds-frozen"))
+                .when(evaluateService).saveDataset(any(EvalDatasetEntity.class));
+
+        // 执行
+        Response<String> result = controller.createDataset(dto);
+
+        // 验证
+        assertEquals(ResponseCode.ILLEGAL_PARAMETER, result.getCode(), "冻结版本修改应返回参数非法");
+        assertTrue(result.getInfo().contains("已冻结"), "错误信息应说明冻结: " + result.getInfo());
+    }
+
+    @Test
+    @DisplayName("创建数据集 — 新建透传版本/池/来源/冻结字段")
+    public void testCreateDataset_NewFieldsPassed() {
+        EvalDatasetDTO dto = new EvalDatasetDTO();
+        dto.setDatasetId("ds-new");
+        dto.setDatasetName("新黄金集");
+        dto.setItemsJson("[]");
+        dto.setVersion(2);
+        dto.setPool("golden");
+        dto.setSource("trace");
+        dto.setFrozen(false);
+
+        Response<String> result = controller.createDataset(dto);
+
+        assertEquals(ResponseCode.SUCCESS, result.getCode());
+        ArgumentCaptor<EvalDatasetEntity> captor = ArgumentCaptor.forClass(EvalDatasetEntity.class);
+        verify(evaluateService).saveDataset(captor.capture());
+        assertEquals(2, captor.getValue().getVersion(), "version 应透传");
+        assertEquals("golden", captor.getValue().getPool(), "pool 应透传");
+        assertEquals("trace", captor.getValue().getSource(), "source 应透传");
+    }
+
+    @Test
+    @DisplayName("三池筛选 — 成功返回池内列表")
+    public void testListByPool_Success() {
+        when(evaluateService.queryDatasetByPool("golden", 1, 20))
+                .thenReturn(List.of(EvalDatasetEntity.builder()
+                        .datasetId("ds-1").datasetName("黄金集").version(1)
+                        .pool("golden").source("manual").frozen(false).build()));
+
+        Response<Map<String, Object>> result = controller.listDatasetsByPool("golden", 1, 20);
+
+        assertEquals(ResponseCode.SUCCESS, result.getCode());
+        assertTrue(result.getData().containsKey("list"));
+    }
+
+    @Test
+    @DisplayName("三池筛选 — 非法池名返回参数错误")
+    public void testListByPool_IllegalPool() {
+        when(evaluateService.queryDatasetByPool("diamond", 1, 20))
+                .thenThrow(new IllegalArgumentException("非法样本池: diamond"));
+
+        Response<Map<String, Object>> result = controller.listDatasetsByPool("diamond", 1, 20);
+
+        assertEquals(ResponseCode.ILLEGAL_PARAMETER, result.getCode(), "非法池名应返回参数非法");
+    }
+
+    @Test
+    @DisplayName("版本列表 — 按名称返回全部版本")
+    public void testListVersions_Success() {
+        when(evaluateService.queryDatasetVersions("ds-1")).thenReturn(List.of(
+                EvalDatasetEntity.builder().datasetId("ds-2").datasetName("黄金集").version(2).build(),
+                EvalDatasetEntity.builder().datasetId("ds-1").datasetName("黄金集").version(1).build()));
+
+        Response<Map<String, Object>> result = controller.listDatasetVersions("ds-1");
+
+        assertEquals(ResponseCode.SUCCESS, result.getCode());
+        assertEquals(2, ((List<?>) result.getData().get("list")).size());
+    }
+
+    @Test
+    @DisplayName("快照复制 — 返回新 datasetId 与递增版本")
+    public void testCopyVersion_Success() {
+        when(evaluateService.copyDatasetVersion("ds-1")).thenReturn(EvalDatasetEntity.builder()
+                .datasetId("ds-new-777").datasetName("黄金集").version(3)
+                .pool("golden").frozen(false).build());
+
+        Response<Map<String, Object>> result = controller.copyDatasetVersion("ds-1");
+
+        assertEquals(ResponseCode.SUCCESS, result.getCode());
+        assertEquals("ds-new-777", result.getData().get("datasetId"));
+        assertEquals(3, result.getData().get("version"));
+        assertEquals(Boolean.FALSE, result.getData().get("frozen"));
+    }
+
+    @Test
+    @DisplayName("快照复制 — 源不存在返回参数错误")
+    public void testCopyVersion_NotFound() {
+        when(evaluateService.copyDatasetVersion("ds-none"))
+                .thenThrow(new IllegalArgumentException("数据集不存在: ds-none"));
+
+        Response<Map<String, Object>> result = controller.copyDatasetVersion("ds-none");
+
+        assertEquals(ResponseCode.ILLEGAL_PARAMETER, result.getCode());
+    }
+
+    @Test
+    @DisplayName("冻结/解冻 — 成功委托服务并返回 ok")
+    public void testFreezeAndUnfreeze_Success() {
+        Response<String> freeze = controller.freezeDataset("ds-1");
+        assertEquals(ResponseCode.SUCCESS, freeze.getCode());
+        verify(evaluateService).freezeDataset("ds-1", true);
+
+        Response<String> unfreeze = controller.unfreezeDataset("ds-1");
+        assertEquals(ResponseCode.SUCCESS, unfreeze.getCode());
+        verify(evaluateService).freezeDataset("ds-1", false);
+    }
+
+    @Test
+    @DisplayName("冻结 — 不存在的数据集返回参数错误")
+    public void testFreeze_NotFound() {
+        doThrow(new IllegalArgumentException("数据集不存在: ds-none"))
+                .when(evaluateService).freezeDataset("ds-none", true);
+
+        Response<String> result = controller.freezeDataset("ds-none");
+
+        assertEquals(ResponseCode.ILLEGAL_PARAMETER, result.getCode());
     }
 }

@@ -16,4 +16,10 @@ public interface IEvalMetricsPort {
 
     /** 幻觉命中计数，tag: eval_type */
     void recordHallucination(String evalType);
+
+    /**
+     * unknown 维度占比（工单 0133 R1）— LLM 评判「标准不清晰」的可度量指标，tag: eval_type。
+     * 任务级汇总口径：任务内所有样本的 unknown 维度数 / judge 维度总数。
+     */
+    void recordUnknownRatio(String evalType, double unknownRatio);
 }

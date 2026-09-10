@@ -1,6 +1,8 @@
 -- =============================================================================
--- 观测服务 8 表建表脚本（PostgreSQL 版）
+-- 观测服务建表脚本（PostgreSQL 版）
 -- 工单 0123（三期 O3：PG 全量 DDL 翻译）补账：为从未入库过 DDL 的表补建脚本，2026-09-10。
+-- 工单 0133/0134（三期 R1/R2）：eval_dataset 增列 version/pool/source/frozen 并入建表
+--   （既有库手工执行表 6 后注释中的 ALTER）；新增第 9 表 eval_rubric，2026-09-10。
 -- 口径：
 --   (1) agent_decision_log / rag_retrieval_log / chat_result_log 三表以
 --       docs/02-agent-rag-observability-server/09-补充技术细节.md 第 1040-1128 行
@@ -216,7 +218,8 @@ COMMENT ON COLUMN memory_recall_log.create_time IS '创建时间';
 CREATE INDEX IF NOT EXISTS idx_mrl_trace_id ON memory_recall_log (trace_id);
 CREATE INDEX IF NOT EXISTS idx_mrl_create_time ON memory_recall_log (create_time);
 
--- 6. 评测数据集表（反推：eval_dataset_mapper.xml INSERT/SELECT 列集 + EvalDatasetPO）
+-- 6. 评测数据集表（反推：eval_dataset_mapper.xml INSERT/SELECT 列集 + EvalDatasetPO；
+--    工单 0134 R2 增列 version/pool/source/frozen 已并入建表）
 CREATE TABLE IF NOT EXISTS eval_dataset (
     id           BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     dataset_id   VARCHAR(64)  NOT NULL,
@@ -224,19 +227,38 @@ CREATE TABLE IF NOT EXISTS eval_dataset (
     description  VARCHAR(512) DEFAULT NULL,
     item_count   INT          DEFAULT 0,
     items_json   TEXT,
+    version      INT          NOT NULL DEFAULT 1,
+    pool         VARCHAR(16)  DEFAULT NULL,
+    source       VARCHAR(16)  DEFAULT NULL,
+    frozen       SMALLINT     NOT NULL DEFAULT 0,
     create_time  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     update_time  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT uk_dataset_id UNIQUE (dataset_id)
 );
 COMMENT ON TABLE eval_dataset IS '评测数据集表';
 COMMENT ON COLUMN eval_dataset.dataset_id IS '数据集业务ID（唯一）';
-COMMENT ON COLUMN eval_dataset.dataset_name IS '数据集名称';
+COMMENT ON COLUMN eval_dataset.dataset_name IS '数据集名称（版本化锚点，同 name 多版本）';
 COMMENT ON COLUMN eval_dataset.description IS '数据集描述';
 COMMENT ON COLUMN eval_dataset.item_count IS '条目数（PO Integer→INT）';
 COMMENT ON COLUMN eval_dataset.items_json IS '数据集条目 JSON 数组（文本读写，PO String→TEXT）';
+COMMENT ON COLUMN eval_dataset.version IS '版本号（同 dataset_name 递增，快照复制产生新版本）';
+COMMENT ON COLUMN eval_dataset.pool IS '样本池：golden/challenge/wrong；NULL=未分类（存量兼容）';
+COMMENT ON COLUMN eval_dataset.source IS '来源标记：trace/manual/seed';
+COMMENT ON COLUMN eval_dataset.frozen IS '版本冻结位：0-可编辑，1-条目不可改（PO Integer→SMALLINT）';
 COMMENT ON COLUMN eval_dataset.create_time IS '创建时间';
 COMMENT ON COLUMN eval_dataset.update_time IS '更新时间（应用层维护）';
 CREATE INDEX IF NOT EXISTS idx_eval_dataset_create_time ON eval_dataset (create_time);
+CREATE INDEX IF NOT EXISTS idx_eval_dataset_name_version ON eval_dataset (dataset_name, version);
+CREATE INDEX IF NOT EXISTS idx_eval_dataset_pool ON eval_dataset (pool);
+
+-- 既有库增量升级（手工执行；本文件以幂等 CREATE IF NOT EXISTS 为主，ALTER 仅对已存在的旧表）：
+-- ALTER TABLE eval_dataset
+--     ADD COLUMN version INT NOT NULL DEFAULT 1,
+--     ADD COLUMN pool VARCHAR(16) DEFAULT NULL,
+--     ADD COLUMN source VARCHAR(16) DEFAULT NULL,
+--     ADD COLUMN frozen SMALLINT NOT NULL DEFAULT 0;
+-- CREATE INDEX IF NOT EXISTS idx_eval_dataset_name_version ON eval_dataset (dataset_name, version);
+-- CREATE INDEX IF NOT EXISTS idx_eval_dataset_pool ON eval_dataset (pool);
 
 -- 7. 评测任务表（反推：eval_task_mapper.xml 全部 SQL 列集 + EvalTaskPO）
 CREATE TABLE IF NOT EXISTS eval_task (
@@ -339,3 +361,32 @@ COMMENT ON COLUMN eval_result.reasoning_score IS '推理过程分项（结构化
 COMMENT ON COLUMN eval_result.agent_decision_score IS 'Agent 决策总分项（结构化落库）';
 COMMENT ON COLUMN eval_result.create_time IS '创建时间';
 CREATE INDEX IF NOT EXISTS idx_eval_result_task_time ON eval_result (task_id, create_time);
+
+-- 9. 评测 Rubric 评判标准表（工单 0133 R1：eval_rubric_mapper.xml 全部 SQL 列集 + EvalRubricPO）
+CREATE TABLE IF NOT EXISTS eval_rubric (
+    id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    rubric_id   VARCHAR(64)  NOT NULL,
+    name        VARCHAR(128) NOT NULL,
+    eval_type   VARCHAR(32)  NOT NULL,
+    version     INT          NOT NULL DEFAULT 1,
+    dimensions  TEXT,
+    enabled     SMALLINT     NOT NULL DEFAULT 1,
+    builtin     SMALLINT     NOT NULL DEFAULT 0,
+    create_time TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    update_time TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uk_rubric_id UNIQUE (rubric_id),
+    CONSTRAINT uk_rubric_name UNIQUE (name)
+);
+COMMENT ON TABLE eval_rubric IS '评测Rubric评判标准表';
+COMMENT ON COLUMN eval_rubric.rubric_id IS 'Rubric业务ID（唯一）';
+COMMENT ON COLUMN eval_rubric.name IS 'Rubric名称（唯一，内置种子 builtin-* 前缀）';
+COMMENT ON COLUMN eval_rubric.eval_type IS '评测类型（RAG_RETRIEVAL/ANSWER_QUALITY/CONTEXT_QUALITY/TOOL_CALL/AGENT_DECISION）';
+COMMENT ON COLUMN eval_rubric.version IS '版本号';
+COMMENT ON COLUMN eval_rubric.dimensions IS '维度JSON数组 [{key,label,weight,judgePrompt,binary}]（PO String→TEXT）';
+COMMENT ON COLUMN eval_rubric.enabled IS '是否启用：0-停用，1-启用（PO Integer→SMALLINT）';
+COMMENT ON COLUMN eval_rubric.builtin IS '内置种子标记：0-用户自建，1-内置（不可删改）（PO Integer→SMALLINT）';
+COMMENT ON COLUMN eval_rubric.create_time IS '创建时间';
+COMMENT ON COLUMN eval_rubric.update_time IS '更新时间（应用层维护）';
+CREATE INDEX IF NOT EXISTS idx_eval_rubric_eval_type_enabled ON eval_rubric (eval_type, enabled);
+-- 既有库为空表时直接执行上方 CREATE；dimensions JSON 由应用层（RubricService）校验
+-- 维度 key 唯一 + 权重和=1，库层不额外建 JSON 约束。

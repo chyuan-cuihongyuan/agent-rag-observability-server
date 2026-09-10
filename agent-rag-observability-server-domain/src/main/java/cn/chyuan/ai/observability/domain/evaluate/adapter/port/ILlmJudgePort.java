@@ -26,6 +26,12 @@ public interface ILlmJudgePort {
      */
     JudgeVerdict judge(String query, String standardAnswer, String actualAnswer, List<String> retrievedChunks);
 
+    /**
+     * 原始文本补全（工单 0133 R1）— 输入渲染好的评判 prompt，返回 LLM 原始输出文本。
+     * 供 RubricExecutionEngine 的二元断言/维度级评判使用；实现不可用或调用失败时返回 null（调用方归 unknown）。
+     */
+    String complete(String prompt);
+
     /** 当前是否具备真实 LLM 评判能力（false 表示仅降级） */
     boolean available();
 }

@@ -82,7 +82,37 @@ public class EvaluateService {
         return evalResultRepository.countByTaskId(taskId);
     }
 
+    /**
+     * 保存数据集（工单 0134 R2 增强语义）：
+     * <ul>
+     *   <li>datasetId 为空或库中不存在 → 新建（version 默认 1、frozen 默认 false）</li>
+     *   <li>datasetId 已存在 → 更新条目（itemsJson 整体替换，条目增删改统一入口）；
+     *       <b>冻结不变式：frozen 版本条目不可改，直接拒绝</b></li>
+     * </ul>
+     */
     public void saveDataset(EvalDatasetEntity entity) {
+        EvalDatasetEntity existing = (entity.getDatasetId() == null || entity.getDatasetId().isEmpty())
+                ? null : evalDatasetRepository.queryByDatasetId(entity.getDatasetId());
+        if (existing != null) {
+            if (Boolean.TRUE.equals(existing.getFrozen())) {
+                throw new IllegalArgumentException("数据集版本已冻结，禁止修改条目: " + entity.getDatasetId()
+                        + "（如需调整请先解冻或复制为新版本）");
+            }
+            // 版本锚字段（name/version/frozen）不随条目更新变化，pool/source 允许显式调整
+            entity.setDatasetName(existing.getDatasetName());
+            entity.setVersion(existing.getVersion());
+            entity.setFrozen(existing.getFrozen());
+            if (entity.getPool() == null) {
+                entity.setPool(existing.getPool());
+            }
+            if (entity.getSource() == null) {
+                entity.setSource(existing.getSource());
+            }
+            evalDatasetRepository.update(entity);
+            return;
+        }
+        entity.setVersion(entity.getVersion() == null ? 1 : entity.getVersion());
+        entity.setFrozen(entity.getFrozen() != null && entity.getFrozen());
         evalDatasetRepository.save(entity);
     }
 
@@ -92,6 +122,66 @@ public class EvaluateService {
 
     public List<EvalDatasetEntity> queryDatasetList(int page, int size) {
         return evalDatasetRepository.queryList(page, size);
+    }
+
+    // ========== 新增：三池筛选 + 版本化 + 冻结（工单 0134 R2） ==========
+
+    /** 三池合法值 + 未分类口径（存量 pool=NULL） */
+    private static final List<String> VALID_POOLS = List.of("golden", "challenge", "wrong", "unclassified");
+
+    /**
+     * 三池筛选查询：pool ∈ {golden, challenge, wrong, unclassified}；
+     * unclassified 映射为 pool IS NULL（存量数据兼容，不强制迁移）。
+     */
+    public List<EvalDatasetEntity> queryDatasetByPool(String pool, int page, int size) {
+        String normalized = (pool == null || pool.isBlank()) ? "unclassified" : pool.trim().toLowerCase();
+        if (!VALID_POOLS.contains(normalized)) {
+            throw new IllegalArgumentException("非法样本池: " + pool + "（合法值 golden/challenge/wrong/unclassified）");
+        }
+        // unclassified → null（mapper 侧翻译为 pool IS NULL）
+        String repoPool = "unclassified".equals(normalized) ? null : normalized;
+        return evalDatasetRepository.queryByPool(repoPool, page, size);
+    }
+
+    /** 版本列表：按指定数据集的名称查同名全部版本（版本号降序） */
+    public List<EvalDatasetEntity> queryDatasetVersions(String datasetId) {
+        EvalDatasetEntity existing = requireDataset(datasetId);
+        return evalDatasetRepository.queryVersions(existing.getDatasetName());
+    }
+
+    /**
+     * 快照复制为新版本：同名 maxVersion+1，条目 itemsJson 原样复制，
+     * pool/source 继承，frozen=false（新版本可编辑）。
+     */
+    public EvalDatasetEntity copyDatasetVersion(String datasetId) {
+        EvalDatasetEntity src = requireDataset(datasetId);
+        int nextVersion = evalDatasetRepository.maxVersion(src.getDatasetName()) + 1;
+        EvalDatasetEntity copy = EvalDatasetEntity.builder()
+                .datasetName(src.getDatasetName())
+                .description(src.getDescription())
+                .itemCount(src.getItemCount())
+                .itemsJson(src.getItemsJson())
+                .version(nextVersion)
+                .pool(src.getPool())
+                .source(src.getSource())
+                .frozen(false)
+                .build();
+        evalDatasetRepository.save(copy); // 仓储内生成新 datasetId
+        return copy;
+    }
+
+    /** 冻结/解冻指定版本（幂等；冻结后条目不可改，解冻恢复可编辑） */
+    public void freezeDataset(String datasetId, boolean frozen) {
+        requireDataset(datasetId);
+        evalDatasetRepository.updateFrozen(datasetId, frozen);
+    }
+
+    private EvalDatasetEntity requireDataset(String datasetId) {
+        EvalDatasetEntity existing = evalDatasetRepository.queryByDatasetId(datasetId);
+        if (existing == null) {
+            throw new IllegalArgumentException("数据集不存在: " + datasetId);
+        }
+        return existing;
     }
 
     /**

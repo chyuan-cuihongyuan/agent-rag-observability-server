@@ -53,6 +53,13 @@ public class EvalMetricsAdapter implements IEvalMetricsPort {
                 .increment();
     }
 
+    @Override
+    public void recordUnknownRatio(String evalType, double unknownRatio) {
+        // unknown 占比（工单 0133 R1）：LLM 评判「标准不清晰」的可度量指标，反查 Rubric 质量
+        registry.summary("eval_unknown_ratio", "eval_type", nullToDefault(evalType))
+                .record(unknownRatio);
+    }
+
     private String nullToDefault(String s) {
         return s == null || s.isEmpty() ? "unknown" : s;
     }

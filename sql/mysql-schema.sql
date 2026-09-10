@@ -1,6 +1,8 @@
 -- =============================================================================
--- 观测服务 8 表建表脚本（MySQL 版）
+-- 观测服务建表脚本（MySQL 版）
 -- 工单 0123（三期 O3：PG 全量 DDL 翻译）补账：为从未入库过 DDL 的表补建脚本，2026-09-10。
+-- 工单 0133/0134（三期 R1/R2）：eval_dataset 增列 version/pool/source/frozen 并入建表
+--   （既有库手工执行表 6 后注释中的 ALTER）；新增第 9 表 eval_rubric，2026-09-10。
 -- 口径：
 --   (1) agent_decision_log / rag_retrieval_log / chat_result_log 三表以
 --       docs/02-agent-rag-observability-server/09-补充技术细节.md 第 1040-1128 行
@@ -143,20 +145,36 @@ CREATE TABLE IF NOT EXISTS memory_recall_log (
     INDEX idx_create_time (create_time)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='记忆召回日志表';
 
--- 6. 评测数据集表（反推：eval_dataset_mapper.xml INSERT/SELECT 列集 + EvalDatasetPO）
+-- 6. 评测数据集表（反推：eval_dataset_mapper.xml INSERT/SELECT 列集 + EvalDatasetPO；
+--    工单 0134 R2 增列 version/pool/source/frozen 已并入建表）
 CREATE TABLE IF NOT EXISTS eval_dataset (
     id           BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键ID',
     dataset_id   VARCHAR(64)  NOT NULL COMMENT '数据集业务ID（唯一）',
-    dataset_name VARCHAR(128) NOT NULL COMMENT '数据集名称',
+    dataset_name VARCHAR(128) NOT NULL COMMENT '数据集名称（版本化锚点，同 name 多版本）',
     description  VARCHAR(512) DEFAULT NULL COMMENT '数据集描述',
     item_count   INT          DEFAULT 0 COMMENT '条目数（PO Integer）',
     items_json   TEXT         COMMENT '数据集条目 JSON 数组（文本读写，PO String）',
+    version      INT          NOT NULL DEFAULT 1 COMMENT '版本号（同 dataset_name 递增，快照复制产生新版本）',
+    pool         VARCHAR(16)  DEFAULT NULL COMMENT '样本池：golden/challenge/wrong；NULL=未分类（存量兼容）',
+    source       VARCHAR(16)  DEFAULT NULL COMMENT '来源标记：trace/manual/seed',
+    frozen       TINYINT      NOT NULL DEFAULT 0 COMMENT '版本冻结位：0-可编辑，1-条目不可改',
     create_time  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     update_time  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '更新时间（应用层维护）',
     PRIMARY KEY (id),
     UNIQUE KEY uk_dataset_id (dataset_id),
-    INDEX idx_create_time (create_time)
+    INDEX idx_create_time (create_time),
+    INDEX idx_dataset_name_version (dataset_name, version),
+    INDEX idx_pool (pool)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='评测数据集表';
+
+-- 既有库增量升级（手工执行；本文件以幂等 CREATE IF NOT EXISTS 为主，ALTER 仅对已存在的旧表）：
+-- ALTER TABLE eval_dataset
+--     ADD COLUMN version INT NOT NULL DEFAULT 1 COMMENT '版本号（同 dataset_name 递增）',
+--     ADD COLUMN pool VARCHAR(16) DEFAULT NULL COMMENT '样本池：golden/challenge/wrong；NULL=未分类',
+--     ADD COLUMN source VARCHAR(16) DEFAULT NULL COMMENT '来源标记：trace/manual/seed',
+--     ADD COLUMN frozen TINYINT NOT NULL DEFAULT 0 COMMENT '版本冻结位：0-可编辑，1-条目不可改',
+--     ADD INDEX idx_dataset_name_version (dataset_name, version),
+--     ADD INDEX idx_pool (pool);
 
 -- 7. 评测任务表（反推：eval_task_mapper.xml 全部 SQL 列集 + EvalTaskPO）
 CREATE TABLE IF NOT EXISTS eval_task (
@@ -216,3 +234,23 @@ CREATE TABLE IF NOT EXISTS eval_result (
     PRIMARY KEY (id),
     INDEX idx_task_time (task_id, create_time)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='评测结果表';
+
+-- 9. 评测 Rubric 评判标准表（工单 0133 R1：eval_rubric_mapper.xml 全部 SQL 列集 + EvalRubricPO）
+CREATE TABLE IF NOT EXISTS eval_rubric (
+    id          BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    rubric_id   VARCHAR(64)  NOT NULL COMMENT 'Rubric业务ID（唯一）',
+    name        VARCHAR(128) NOT NULL COMMENT 'Rubric名称（唯一，内置种子 builtin-* 前缀）',
+    eval_type   VARCHAR(32)  NOT NULL COMMENT '评测类型（RAG_RETRIEVAL/ANSWER_QUALITY/CONTEXT_QUALITY/TOOL_CALL/AGENT_DECISION）',
+    version     INT          NOT NULL DEFAULT 1 COMMENT '版本号',
+    dimensions  TEXT         COMMENT '维度JSON数组 [{key,label,weight,judgePrompt,binary}]（PO String）',
+    enabled     TINYINT      NOT NULL DEFAULT 1 COMMENT '是否启用：0-停用，1-启用',
+    builtin     TINYINT      NOT NULL DEFAULT 0 COMMENT '内置种子标记：0-用户自建，1-内置（不可删改）',
+    create_time DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '更新时间（应用层维护）',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_rubric_id (rubric_id),
+    UNIQUE KEY uk_rubric_name (name),
+    INDEX idx_eval_type_enabled (eval_type, enabled)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='评测Rubric评判标准表';
+-- 既有库为空表时直接执行上方 CREATE；dimensions JSON 由应用层（RubricService）校验
+-- 维度 key 唯一 + 权重和=1，库层不额外建 JSON 约束。

@@ -30,4 +30,13 @@ public class EvalDatasetItem {
     private String expectedBranchType;
     /** 期望的推理步骤描述 */
     private String expectedReasoningSteps;
+
+    // ========== 新增：Task 三元组字段（工单 0134 R2） ==========
+    /** 样本绑定的原始 prompt 文本（三元组之一：prompt 引用，Agent 评测对齐线上真实输入） */
+    private String prompt;
+    /** prompt 版本（与 prompt 配套，区分同一模板的迭代） */
+    private String promptVersion;
+    /** 来源 trace 锚点（三元组之一：traceId 关联，回填时指向沉淀该样本的链路）；
+     *  期望行为组（三元组之二）显式引用上方 expected* 平铺字段，保持既有 itemsJson 兼容 */
+    private String traceId;
 }

@@ -34,8 +34,16 @@ public class EvaluateController {
         EvalDatasetEntity entity = EvalDatasetEntity.builder()
                 .datasetId(dto.getDatasetId()).datasetName(dto.getDatasetName())
                 .description(dto.getDescription()).itemCount(dto.getItemCount())
-                .itemsJson(dto.getItemsJson()).build();
-        evaluateService.saveDataset(entity);
+                .itemsJson(dto.getItemsJson())
+                .version(dto.getVersion()).pool(dto.getPool())
+                .source(dto.getSource()).frozen(dto.getFrozen())
+                .build();
+        try {
+            evaluateService.saveDataset(entity);
+        } catch (IllegalArgumentException e) {
+            // 工单 0134 R2：冻结不变式（frozen 版本条目不可改）等校验失败结构化拒绝
+            return Response.fail(ResponseCode.ILLEGAL_PARAMETER, e.getMessage());
+        }
         return Response.success(dto.getDatasetId());
     }
 
@@ -48,6 +56,89 @@ public class EvaluateController {
             return Response.fail(ResponseCode.ILLEGAL_PARAMETER, validationError);
         }
         return Response.success(Map.of("list", evaluateService.queryDatasetList(page, size)));
+    }
+
+    // ========== 新增：三池筛选 + 版本化 + 冻结（工单 0134 R2） ==========
+
+    /** 三池筛选：pool ∈ {golden, challenge, wrong, unclassified}（unclassified=存量未分类） */
+    @GetMapping("/dataset/pool/{pool}")
+    public Response<Map<String, Object>> listDatasetsByPool(
+            @PathVariable String pool,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        String validationError = RequestValidator.validatePage(page, size);
+        if (validationError != null) {
+            return Response.fail(ResponseCode.ILLEGAL_PARAMETER, validationError);
+        }
+        try {
+            return Response.success(Map.of("list", evaluateService.queryDatasetByPool(pool, page, size),
+                    "page", page, "size", size));
+        } catch (IllegalArgumentException e) {
+            return Response.fail(ResponseCode.ILLEGAL_PARAMETER, e.getMessage());
+        }
+    }
+
+    /** 版本列表：同名数据集的全部版本（版本号降序） */
+    @GetMapping("/dataset/{datasetId}/versions")
+    public Response<Map<String, Object>> listDatasetVersions(@PathVariable String datasetId) {
+        String validationError = RequestValidator.validateId("datasetId", datasetId);
+        if (validationError != null) {
+            return Response.fail(ResponseCode.ILLEGAL_PARAMETER, validationError);
+        }
+        try {
+            return Response.success(Map.of("list", evaluateService.queryDatasetVersions(datasetId)));
+        } catch (IllegalArgumentException e) {
+            return Response.fail(ResponseCode.ILLEGAL_PARAMETER, e.getMessage());
+        }
+    }
+
+    /** 快照复制为新版本：条目原样复制，version 同名递增，新版本未冻结 */
+    @PostMapping("/dataset/{datasetId}/copy-version")
+    public Response<Map<String, Object>> copyDatasetVersion(@PathVariable String datasetId) {
+        String validationError = RequestValidator.validateId("datasetId", datasetId);
+        if (validationError != null) {
+            return Response.fail(ResponseCode.ILLEGAL_PARAMETER, validationError);
+        }
+        try {
+            EvalDatasetEntity copy = evaluateService.copyDatasetVersion(datasetId);
+            return Response.success(Map.of(
+                    "datasetId", copy.getDatasetId(),
+                    "datasetName", copy.getDatasetName(),
+                    "version", copy.getVersion(),
+                    "frozen", copy.getFrozen()));
+        } catch (IllegalArgumentException e) {
+            return Response.fail(ResponseCode.ILLEGAL_PARAMETER, e.getMessage());
+        }
+    }
+
+    /** 冻结版本（frozen 版本条目不可改） */
+    @PostMapping("/dataset/{datasetId}/freeze")
+    public Response<String> freezeDataset(@PathVariable String datasetId) {
+        String validationError = RequestValidator.validateId("datasetId", datasetId);
+        if (validationError != null) {
+            return Response.fail(ResponseCode.ILLEGAL_PARAMETER, validationError);
+        }
+        try {
+            evaluateService.freezeDataset(datasetId, true);
+            return Response.success("ok");
+        } catch (IllegalArgumentException e) {
+            return Response.fail(ResponseCode.ILLEGAL_PARAMETER, e.getMessage());
+        }
+    }
+
+    /** 解冻版本（恢复条目可编辑） */
+    @PostMapping("/dataset/{datasetId}/unfreeze")
+    public Response<String> unfreezeDataset(@PathVariable String datasetId) {
+        String validationError = RequestValidator.validateId("datasetId", datasetId);
+        if (validationError != null) {
+            return Response.fail(ResponseCode.ILLEGAL_PARAMETER, validationError);
+        }
+        try {
+            evaluateService.freezeDataset(datasetId, false);
+            return Response.success("ok");
+        } catch (IllegalArgumentException e) {
+            return Response.fail(ResponseCode.ILLEGAL_PARAMETER, e.getMessage());
+        }
     }
 
     @PostMapping("/task")

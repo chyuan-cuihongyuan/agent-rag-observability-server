@@ -22,6 +22,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -31,6 +32,10 @@ import java.util.Map;
  * 按评测类型加权综合分 → 批量落库结果 → 周期回写进度 → 完成/失败置位。
  * <p>
  * 由 EvaluateService 在线程池中异步调用，本身不开线程。
+ * <p>
+ * 工单 0133 R1 改造：综合分权重从 Rubric 读取（RubricService.resolveWeights，
+ * evalType → 启用中 Rubric，缺省回退内置 v2 兜底口径）；LLM 评判解析失败/降级的
+ * unknown 维度占比进样本明细（eval_detail.unknownRatio）与任务级指标（eval_unknown_ratio）。
  */
 @Slf4j
 @Service
@@ -47,6 +52,7 @@ public class EvalExecutionService {
     private final IAnswerSourceProvider answerSourceProvider;
     private final ILlmJudgePort llmJudgePort;
     private final IEvalMetricsPort evalMetricsPort;
+    private final RubricService rubricService;
 
     public EvalExecutionService(IEvalTaskRepository evalTaskRepository,
                                 IEvalResultRepository evalResultRepository,
@@ -54,7 +60,8 @@ public class EvalExecutionService {
                                 RetrievalMetricCalculator metricCalculator,
                                 IAnswerSourceProvider answerSourceProvider,
                                 ILlmJudgePort llmJudgePort,
-                                IEvalMetricsPort evalMetricsPort) {
+                                IEvalMetricsPort evalMetricsPort,
+                                RubricService rubricService) {
         this.evalTaskRepository = evalTaskRepository;
         this.evalResultRepository = evalResultRepository;
         this.evalDatasetRepository = evalDatasetRepository;
@@ -62,6 +69,7 @@ public class EvalExecutionService {
         this.answerSourceProvider = answerSourceProvider;
         this.llmJudgePort = llmJudgePort;
         this.evalMetricsPort = evalMetricsPort;
+        this.rubricService = rubricService;
     }
 
     /**
@@ -80,17 +88,24 @@ public class EvalExecutionService {
             }
 
             String evalType = task.getEvalType() == null ? "ANSWER_QUALITY" : task.getEvalType();
+            // 综合分权重按 evalType 从 Rubric 解析一次（任务内复用；仓储异常时内置兜底）
+            Map<String, Double> weights = rubricService.resolveWeights(evalType);
             int total = items.size();
             evalTaskRepository.updateTotalCount(taskId, total);
             int completed = 0;
             double sumOverall = 0.0;
+            long totalUnknownDims = 0;
+            long totalJudgeDims = 0;
             List<EvalResultEntity> buffer = new ArrayList<>();
 
             for (EvalDatasetItem item : items) {
-                EvalResultEntity result = evaluateOne(taskId, evalType, item);
+                EvalSample sample = evaluateOne(taskId, evalType, weights, item);
+                EvalResultEntity result = sample.result();
                 buffer.add(result);
                 completed++;
                 sumOverall += result.getOverallScore() == null ? 0.0 : result.getOverallScore();
+                totalUnknownDims += sample.unknownDims();
+                totalJudgeDims += sample.judgeDims();
                 evalMetricsPort.recordScore(evalType, result.getOverallScore());
                 if (result.getHallucinationFlag() != null && result.getHallucinationFlag() == 1) {
                     evalMetricsPort.recordHallucination(evalType);
@@ -112,7 +127,13 @@ public class EvalExecutionService {
             evalTaskRepository.updateStatus(taskId, "COMPLETED");
             evalMetricsPort.recordTaskFinished(evalType, "COMPLETED");
             evalMetricsPort.recordTaskDuration(evalType, System.currentTimeMillis() - startMs);
-            log.info("评测任务完成, taskId={}, 条目={}, 平均综合分={}", taskId, total, round(avgOverall));
+            // 任务级 unknown 占比（R1：「标准不清晰」可度量；仅含 LLM 评判维度）
+            if (totalJudgeDims > 0) {
+                evalMetricsPort.recordUnknownRatio(evalType, round((double) totalUnknownDims / totalJudgeDims));
+            }
+            log.info("评测任务完成, taskId={}, 条目={}, 平均综合分={}, unknown维度占比={}",
+                    taskId, total, round(avgOverall),
+                    totalJudgeDims == 0 ? 0.0 : round((double) totalUnknownDims / totalJudgeDims));
         } catch (Exception e) {
             log.error("评测任务执行失败, taskId={}", taskId, e);
             try {
@@ -125,7 +146,7 @@ public class EvalExecutionService {
     }
 
     /** 评测单条样本 */
-    private EvalResultEntity evaluateOne(String taskId, String evalType, EvalDatasetItem item) {
+    private EvalSample evaluateOne(String taskId, String evalType, Map<String, Double> weights, EvalDatasetItem item) {
         String query = item.getQuery();
         String standardAnswer = item.getStandardAnswer();
         List<String> standardChunks = item.getStandardChunks() == null ? List.of() : item.getStandardChunks();
@@ -169,12 +190,18 @@ public class EvalExecutionService {
                 ? verdict.getSimilarity() : rm.getAnswerSimilarity();
         int hallucinationFlag = hallucinationRate >= 0.3 ? 1 : 0;
 
+        // unknown 维度统计（样本级；needJudge=false 的纯检索类型无 LLM 维度，不计）
+        int unknownDims = verdict == null || verdict.getUnknownKeys() == null
+                ? 0 : verdict.getUnknownKeys().size();
+        int judgeDims = needJudge ? BuiltinRubrics.JUDGE_TEMPLATES.size() : 0;
+
         // 3. 工具调用评测（新增）
         Double toolSelectionScore = null;
         Double toolParamScore = null;
         Double toolCallScore = null;
+        ToolCallMetrics tcm = null;
         if ("TOOL_CALL".equals(evalType) && item.getExpectedTools() != null) {
-            ToolCallMetrics tcm = evaluateToolCall(sample, item);
+            tcm = evaluateToolCall(sample, item);
             toolSelectionScore = tcm.selectionScore;
             toolParamScore = tcm.paramScore;
             toolCallScore = tcm.overallScore;
@@ -185,26 +212,34 @@ public class EvalExecutionService {
         Double branchScore = null;
         Double reasoningScore = null;
         Double agentDecisionScore = null;
+        AgentDecisionMetrics adm = null;
         if ("AGENT_DECISION".equals(evalType) && (item.getExpectedIntentType() != null || item.getExpectedBranchType() != null)) {
-            AgentDecisionMetrics adm = evaluateAgentDecision(sample, item);
+            adm = evaluateAgentDecision(sample, item);
             intentScore = adm.intentScore;
             branchScore = adm.branchScore;
             reasoningScore = adm.reasoningScore;
             agentDecisionScore = adm.overallScore;
         }
 
-        // 5. 按评测类型加权综合分（纳入新增指标：mrr/ndcg/context 维度/answerCorrectness）
-        double overall = computeOverall(evalType, rm, faithfulness, relevance, hallucinationRate,
+        // 5. 按评测类型加权综合分（权重从 Rubric 读取；v2 口径迁移，key 与维度权重表对齐）
+        Map<String, Double> metricScores = buildMetricScores(rm, faithfulness, relevance, hallucinationRate,
                 completeness, similarity, answerCorrectness, contextPrecision, contextRecall,
-                contextRelevance, toolCallScore, agentDecisionScore);
+                contextRelevance, tcm, adm);
+        double overall = computeOverall(weights, metricScores);
 
         // 6. 组装明细
         JSONObject detail = new JSONObject();
         detail.put("evalType", evalType);
-        // 综合分权重版本，便于横向对比区分口径（v2 纳入 mrr/ndcg/context/answerCorrectness）
-        detail.put("weightVersion", "v2");
+        // 综合分权重版本，便于横向对比区分口径（v2 纳入 mrr/ndcg/context/answerCorrectness；
+        // v2-rubric 权重改由 Rubric 配置驱动，口径与 v2 内置种子一致）
+        detail.put("weightVersion", "v2-rubric");
         detail.put("retrievalCount", actualChunks.size());
         detail.put("standardChunkCount", standardChunks.size());
+        detail.put("unknownDimensionCount", unknownDims);
+        detail.put("judgeDimensionCount", judgeDims);
+        if (needJudge) {
+            detail.put("unknownRatio", judgeDims == 0 ? 0.0 : round((double) unknownDims / judgeDims));
+        }
         if (verdict != null) {
             detail.put("judgeDegraded", verdict.isDegraded());
             detail.put("judgeDetail", verdict.getDetail());
@@ -219,7 +254,7 @@ public class EvalExecutionService {
             detail.put("reasoningScore", reasoningScore);
         }
 
-        return EvalResultEntity.builder()
+        EvalResultEntity result = EvalResultEntity.builder()
                 .taskId(taskId)
                 .traceId(traceId)
                 .queryText(query)
@@ -252,46 +287,64 @@ public class EvalExecutionService {
                 .reasoningScore(reasoningScore != null ? round(reasoningScore) : null)
                 .agentDecisionScore(agentDecisionScore != null ? round(agentDecisionScore) : null)
                 .build();
+        return new EvalSample(result, unknownDims, judgeDims);
     }
 
     /**
-     * 综合分加权策略（v2，纳入新增指标），按评测类型侧重不同维度：
+     * 汇总本次样本可用的全部指标分数（key 与 Rubric 维度 key 对齐）。
+     * hallucination 为反向维度（越高越差），按 (1-rate) 计入综合分。
+     */
+    private Map<String, Double> buildMetricScores(RetrievalMetrics rm, double faithfulness, double relevance,
+                                                  double hallucinationRate, double completeness, double similarity,
+                                                  double answerCorrectness, double contextPrecision,
+                                                  double contextRecall, double contextRelevance,
+                                                  ToolCallMetrics tcm, AgentDecisionMetrics adm) {
+        Map<String, Double> scores = new HashMap<>();
+        scores.put("f1", rm.getF1());
+        scores.put("top3HitRate", rm.getTop3HitRate());
+        scores.put("mrr", rm.getMrr());
+        scores.put("ndcg", rm.getNdcg());
+        scores.put(BuiltinRubrics.KEY_FAITHFULNESS, faithfulness);
+        scores.put(BuiltinRubrics.KEY_RELEVANCY, relevance);
+        scores.put(BuiltinRubrics.KEY_HALLUCINATION, 1.0 - hallucinationRate);
+        scores.put(BuiltinRubrics.KEY_COMPLETENESS, completeness);
+        scores.put(BuiltinRubrics.KEY_SIMILARITY, similarity);
+        scores.put(BuiltinRubrics.KEY_ANSWER_CORRECTNESS, answerCorrectness);
+        scores.put(BuiltinRubrics.KEY_CONTEXT_PRECISION, contextPrecision);
+        scores.put(BuiltinRubrics.KEY_CONTEXT_RECALL, contextRecall);
+        scores.put(BuiltinRubrics.KEY_CONTEXT_RELEVANCE, contextRelevance);
+        if (tcm != null) {
+            scores.put("toolSelection", tcm.selectionScore);
+            scores.put("toolParam", tcm.paramScore);
+        }
+        if (adm != null) {
+            scores.put("intent", adm.intentScore);
+            scores.put("branch", adm.branchScore);
+            scores.put("reasoning", adm.reasoningScore);
+        }
+        return scores;
+    }
+
+    /**
+     * 综合分加权（v2 口径迁移，工单 0133 R1）：权重表来自 RubricService.resolveWeights(evalType)，
+     * 内置种子与旧硬编码 switch 同口径（对照测试 EvalExecutionServiceWeightTest 保证一致）：
      * <ul>
      *   <li>RAG_RETRIEVAL：检索质量（F1 0.4 + Top3 0.2 + MRR 0.2 + NDCG 0.2）</li>
-     *   <li>ANSWER_QUALITY：答案质量（忠实 0.25 + 相关 0.25 + 完整 0.15 + 相似 0.05 + 正确性 0.2 + 幻觉惩罚 0.1）
-     *       —— 正确性 0.2 为新增，其余项相对 v1 等比缩减</li>
+     *   <li>ANSWER_QUALITY：答案质量（忠实 0.25 + 相关 0.25 + 完整 0.15 + 相似 0.05 + 正确性 0.2 + 幻觉惩罚 0.1）</li>
      *   <li>CONTEXT_QUALITY：上下文维度（精确率 0.4 + 召回率 0.4 + 相关性 0.2）</li>
      *   <li>TOOL_CALL：工具调用质量（工具选择 0.5 + 参数正确 0.5）</li>
      *   <li>AGENT_DECISION：决策质量（意图 0.3 + 分支 0.3 + 推理 0.4）</li>
-     *   <li>默认：检索 0.4 + 上下文 0.2 + 质量 0.4</li>
+     *   <li>默认：检索 0.4 + 上下文 0.2 + 质量 0.4（平铺展开）</li>
      * </ul>
-     * 注：权重版本随结果写入 eval_detail.weightVersion，便于横向对比时区分口径。
+     * 注：权重版本随结果写入 eval_detail.weightVersion（v2-rubric）；权重表缺失的指标 key 按 0 分计。
      */
-    private double computeOverall(String evalType, RetrievalMetrics rm, double faithfulness,
-                                  double relevance, double hallucinationRate, double completeness,
-                                  double similarity, double answerCorrectness,
-                                  double contextPrecision, double contextRecall, double contextRelevance,
-                                  Double toolCallScore, Double agentDecisionScore) {
-        switch (evalType) {
-            case "RAG_RETRIEVAL":
-                return rm.getF1() * 0.4 + rm.getTop3HitRate() * 0.2 + rm.getMrr() * 0.2 + rm.getNdcg() * 0.2;
-            case "ANSWER_QUALITY":
-                return clamp(faithfulness * 0.25 + relevance * 0.25 + completeness * 0.15
-                        + similarity * 0.05 + answerCorrectness * 0.2 + (1 - hallucinationRate) * 0.1);
-            case "CONTEXT_QUALITY":
-                return clamp(contextPrecision * 0.4 + contextRecall * 0.4 + contextRelevance * 0.2);
-            case "TOOL_CALL":
-                return toolCallScore != null ? toolCallScore : 0.0;
-            case "AGENT_DECISION":
-                return agentDecisionScore != null ? agentDecisionScore : 0.0;
-            default:
-                double retrievalScore = rm.getF1() * 0.4 + rm.getTop3HitRate() * 0.2
-                        + rm.getMrr() * 0.2 + rm.getNdcg() * 0.2;
-                double contextScore = clamp(contextPrecision * 0.4 + contextRecall * 0.4 + contextRelevance * 0.2);
-                double qualityScore = clamp(faithfulness * 0.35 + relevance * 0.35
-                        + (1 - hallucinationRate) * 0.3);
-                return retrievalScore * 0.4 + contextScore * 0.2 + qualityScore * 0.4;
+    double computeOverall(Map<String, Double> weights, Map<String, Double> metricScores) {
+        double overall = 0.0;
+        for (Map.Entry<String, Double> w : weights.entrySet()) {
+            Double score = metricScores.get(w.getKey());
+            overall += (score == null ? 0.0 : score) * w.getValue();
         }
+        return clamp(overall);
     }
 
     /**
@@ -373,6 +426,9 @@ public class EvalExecutionService {
 
     /** Agent 决策评测指标 */
     private record AgentDecisionMetrics(double intentScore, double branchScore, double reasoningScore, double overallScore) {}
+
+    /** 单条样本执行产物（结果 + unknown 统计） */
+    private record EvalSample(EvalResultEntity result, int unknownDims, int judgeDims) {}
 
     private void flush(List<EvalResultEntity> buffer, String taskId, int completed, double sumOverall) {
         evalResultRepository.batchSave(new ArrayList<>(buffer));

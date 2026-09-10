@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- 评测 Rubric 表 mapper（工单 0133 R1）：双方言通用语句（分页 LIMIT #{size} OFFSET #{offset}） -->
+<mapper namespace="cn.chyuan.ai.observability.infrastructure.dao.mapper.EvalRubricMapper">
+
+    <insert id="insert" parameterType="cn.chyuan.ai.observability.infrastructure.dao.po.EvalRubricPO" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO eval_rubric (rubric_id, name, eval_type, version, dimensions, enabled, builtin, create_time, update_time)
+        VALUES (#{rubricId}, #{name}, #{evalType}, #{version}, #{dimensions}, #{enabled}, #{builtin}, #{createTime}, #{updateTime})
+    </insert>
+
+    <select id="selectByRubricId" resultType="cn.chyuan.ai.observability.infrastructure.dao.po.EvalRubricPO">
+        SELECT id, rubric_id, name, eval_type, version, dimensions, enabled, builtin, create_time, update_time
+        FROM eval_rubric WHERE rubric_id = #{rubricId}
+    </select>
+
+    <select id="selectByName" resultType="cn.chyuan.ai.observability.infrastructure.dao.po.EvalRubricPO">
+        SELECT id, rubric_id, name, eval_type, version, dimensions, enabled, builtin, create_time, update_time
+        FROM eval_rubric WHERE name = #{name}
+    </select>
+
+    <!-- 用户自建（builtin=0）优先于内置种子，同优先级版本高者优先，取一条作为该 evalType 的默认 Rubric -->
+    <select id="selectEnabledByEvalType" resultType="cn.chyuan.ai.observability.infrastructure.dao.po.EvalRubricPO">
+        SELECT id, rubric_id, name, eval_type, version, dimensions, enabled, builtin, create_time, update_time
+        FROM eval_rubric
+        WHERE eval_type = #{evalType} AND enabled = 1
+        ORDER BY builtin ASC, version DESC, id DESC
+        LIMIT 1
+    </select>
+
+    <select id="selectList" resultType="cn.chyuan.ai.observability.infrastructure.dao.po.EvalRubricPO">
+        SELECT id, rubric_id, name, eval_type, version, dimensions, enabled, builtin, create_time, update_time
+        FROM eval_rubric ORDER BY create_time DESC LIMIT #{size} OFFSET #{offset}
+    </select>
+
+    <update id="update" parameterType="cn.chyuan.ai.observability.infrastructure.dao.po.EvalRubricPO">
+        UPDATE eval_rubric
+        SET name = #{name}, eval_type = #{evalType}, version = #{version}, dimensions = #{dimensions},
+            enabled = #{enabled}, update_time = #{updateTime}
+        WHERE rubric_id = #{rubricId}
+    </update>
+
+</mapper>

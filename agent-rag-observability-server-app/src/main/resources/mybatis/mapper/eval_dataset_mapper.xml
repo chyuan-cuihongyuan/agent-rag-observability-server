@@ -1,20 +1,65 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- 评测数据集表 mapper（工单 0134 R2 增列 version/pool/source/frozen；双方言通用语句，
+     分页 LIMIT #{size} OFFSET #{offset}，NULL 判断 = / IS NULL 双库一致） -->
 <mapper namespace="cn.chyuan.ai.observability.infrastructure.dao.mapper.EvalDatasetMapper">
 
     <insert id="insert" parameterType="cn.chyuan.ai.observability.infrastructure.dao.po.EvalDatasetPO" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO eval_dataset (dataset_id, dataset_name, description, item_count, items_json, create_time, update_time)
-        VALUES (#{datasetId}, #{datasetName}, #{description}, #{itemCount}, #{itemsJson}, #{createTime}, #{updateTime})
+        INSERT INTO eval_dataset (dataset_id, dataset_name, description, item_count, items_json,
+                                  version, pool, source, frozen, create_time, update_time)
+        VALUES (#{datasetId}, #{datasetName}, #{description}, #{itemCount}, #{itemsJson},
+                #{version}, #{pool}, #{source}, #{frozen}, #{createTime}, #{updateTime})
     </insert>
 
     <select id="selectByDatasetId" resultType="cn.chyuan.ai.observability.infrastructure.dao.po.EvalDatasetPO">
-        SELECT id, dataset_id, dataset_name, description, item_count, items_json, create_time, update_time
+        SELECT id, dataset_id, dataset_name, description, item_count, items_json,
+               version, pool, source, frozen, create_time, update_time
         FROM eval_dataset WHERE dataset_id = #{datasetId}
     </select>
 
     <select id="selectList" resultType="cn.chyuan.ai.observability.infrastructure.dao.po.EvalDatasetPO">
-        SELECT id, dataset_id, dataset_name, description, item_count, create_time, update_time
+        SELECT id, dataset_id, dataset_name, description, item_count,
+               version, pool, source, frozen, create_time, update_time
         FROM eval_dataset ORDER BY create_time DESC LIMIT #{size} OFFSET #{offset}
     </select>
+
+    <!-- 版本不变式：dataset_name / version / frozen 不在更新列（冻结位走 updateFrozen 专用语句） -->
+    <update id="update" parameterType="cn.chyuan.ai.observability.infrastructure.dao.po.EvalDatasetPO">
+        UPDATE eval_dataset
+        SET description = #{description}, item_count = #{itemCount}, items_json = #{itemsJson},
+            pool = #{pool}, source = #{source}, update_time = #{updateTime}
+        WHERE dataset_id = #{datasetId}
+    </update>
+
+    <!-- 三池筛选：pool 为 null 时查未分类（存量 pool=NULL 兼容，不强制迁移） -->
+    <select id="selectByPool" resultType="cn.chyuan.ai.observability.infrastructure.dao.po.EvalDatasetPO">
+        SELECT id, dataset_id, dataset_name, description, item_count,
+               version, pool, source, frozen, create_time, update_time
+        FROM eval_dataset
+        <where>
+            <choose>
+                <when test="pool != null">pool = #{pool}</when>
+                <otherwise>pool IS NULL</otherwise>
+            </choose>
+        </where>
+        ORDER BY create_time DESC LIMIT #{size} OFFSET #{offset}
+    </select>
+
+    <!-- 同名数据集版本列表（版本号降序） -->
+    <select id="selectVersions" resultType="cn.chyuan.ai.observability.infrastructure.dao.po.EvalDatasetPO">
+        SELECT id, dataset_id, dataset_name, description, item_count,
+               version, pool, source, frozen, create_time, update_time
+        FROM eval_dataset WHERE dataset_name = #{datasetName}
+        ORDER BY version DESC, create_time DESC
+    </select>
+
+    <select id="selectMaxVersion" resultType="java.lang.Integer">
+        SELECT COALESCE(MAX(version), 0) FROM eval_dataset WHERE dataset_name = #{datasetName}
+    </select>
+
+    <update id="updateFrozen">
+        UPDATE eval_dataset SET frozen = #{frozen}, update_time = #{updateTime}
+        WHERE dataset_id = #{datasetId}
+    </update>
 
 </mapper>

@@ -5,6 +5,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.List;
+
 /**
  * LLM-as-judge 对一次答案的质量评判结果。各分值区间 0-1，越高越好（hallucination 越低越好）。
  */
@@ -35,4 +37,6 @@ public class JudgeVerdict {
     private String detail;
     /** 是否走了降级（未配置 LLM 或调用失败） */
     private boolean degraded;
+    /** 解析失败/降级的维度 key 集合（工单 0133 R1：unknown 统计的样本级来源；默认空） */
+    private List<String> unknownKeys;
 }

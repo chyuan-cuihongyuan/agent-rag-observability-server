@@ -20,4 +20,10 @@ public class EvalDatasetPO implements Serializable {
     private String itemsJson;
     private String createTime;
     private String updateTime;
+
+    // ========== 新增：版本化 + 三池 + 来源 + 冻结（工单 0134 R2） ==========
+    private Integer version;
+    private String pool;
+    private String source;
+    private Integer frozen;
 }

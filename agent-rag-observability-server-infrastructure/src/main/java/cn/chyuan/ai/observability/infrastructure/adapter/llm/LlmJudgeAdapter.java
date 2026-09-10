@@ -2,6 +2,9 @@ package cn.chyuan.ai.observability.infrastructure.adapter.llm;
 
 import cn.chyuan.ai.observability.domain.evaluate.adapter.port.ILlmJudgePort;
 import cn.chyuan.ai.observability.domain.evaluate.model.valobj.JudgeVerdict;
+import cn.chyuan.ai.observability.domain.evaluate.service.BuiltinRubrics;
+import cn.chyuan.ai.observability.domain.evaluate.service.RubricPromptRenderer;
+import cn.chyuan.ai.observability.domain.evaluate.service.RubricService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatModel;
@@ -10,17 +13,29 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
  * LLM-as-judge 适配器 — 使用 DeepSeek 通过 Spring AI OpenAI 兼容客户端评判答案质量。
- * 复用 aggregation-support-agent AnswerQualityEvaluator 已验证的 prompt 与解析逻辑。
+ * <p>
+ * 工单 0133 R1 改造：原 9 个硬编码 judge prompt 收编为内置 Rubric 种子（BuiltinRubrics），
+ * 本适配器按 Rubric 维度的 judgePrompt 模板渲染（{{query}}/{{reference}}/{{answer}}/{{context}}/
+ * {{numberedContext}} 占位符，RubricService 懒加载种子 + 内置兜底），渲染与截断口径与
+ * 硬编码时代逐字一致（RubricPromptRendererTest 保真对照）；解析失败/降级的维度记入
+ * unknownKeys 供任务级 unknown 占比统计。
  */
 @Slf4j
 @Component
 public class LlmJudgeAdapter implements ILlmJudgePort {
+
+    /** LLM 评判维度总数（unknown 占比分母） */
+    private static final List<String> ALL_JUDGE_KEYS = List.copyOf(BuiltinRubrics.JUDGE_TEMPLATES.keySet());
+
+    private final RubricService rubricService;
 
     @Autowired(required = false)
     private ChatModel chatModel;
@@ -31,180 +46,9 @@ public class LlmJudgeAdapter implements ILlmJudgePort {
     private static final Pattern SCORE_PATTERN = Pattern.compile("(\\d+(?:\\.\\d+)?)");
     private static final Pattern HALLUCINATION_PATTERN = Pattern.compile("幻觉比例[：:]\\s*(\\d+(?:\\.\\d+)?)");
 
-    // 预编译 prompt 模板，避免每次调用时重新格式化
-    private static final String FAITHFULNESS_PROMPT_TEMPLATE = """
-                请评估以下答案是否忠实于提供的参考资料。
-
-                评分标准：
-                - 1.0分：答案完全基于参考资料，没有添加额外信息
-                - 0.8分：答案主要基于参考资料，有少量合理推断
-                - 0.6分：答案部分基于参考资料，有一些未提及的信息
-                - 0.4分：答案与参考资料关联较弱，多为补充信息
-                - 0.2分：答案与参考资料基本无关
-                - 0.0分：答案完全脱离参考资料
-
-                参考资料：
-                %s
-
-                答案：
-                %s
-
-                请只返回一个0-1之间的数字分数，不要解释：
-                """;
-
-    private static final String RELEVANCY_PROMPT_TEMPLATE = """
-                请评估以下答案是否回答了用户的问题。
-
-                评分标准：
-                - 1.0分：完全回答了问题，信息准确且完整
-                - 0.8分：基本回答了问题，但缺少一些细节
-                - 0.6分：部分回答了问题，但有遗漏
-                - 0.4分：回答与问题相关，但没有直接回答
-                - 0.2分：回答与问题关联较弱
-                - 0.0分：完全没有回答问题
-
-                用户问题：%s
-
-                答案：
-                %s
-
-                请只返回一个0-1之间的数字分数，不要解释：
-                """;
-
-    private static final String COMPLETENESS_PROMPT_TEMPLATE = """
-                请评估实际答案相对于标准答案的完整性。
-
-                评分标准：
-                - 1.0分：实际答案完整覆盖了标准答案的所有要点
-                - 0.8分：实际答案覆盖了标准答案的大部分要点
-                - 0.6分：实际答案覆盖了标准答案的一半要点
-                - 0.4分：实际答案只覆盖了少部分要点
-                - 0.2分：实际答案基本没有覆盖标准答案要点
-                - 0.0分：完全偏离标准答案
-
-                标准答案：
-                %s
-
-                实际答案：
-                %s
-
-                请只返回一个0-1之间的数字分数，不要解释：
-                """;
-
-    private static final String SIMILARITY_PROMPT_TEMPLATE = """
-                请评估两个答案的语义相似度。
-
-                评分标准：
-                - 1.0分：语义完全一致，只是表述不同
-                - 0.8分：语义高度一致，只有细微差别
-                - 0.6分：语义基本一致，但有部分差异
-                - 0.4分：语义部分一致
-                - 0.2分：语义有较大差异
-                - 0.0分：语义完全不同
-
-                答案A：
-                %s
-
-                答案B：
-                %s
-
-                请只返回一个0-1之间的数字分数，不要解释：
-                """;
-
-    private static final String HALLUCINATION_PROMPT_TEMPLATE = """
-                请检测答案中是否存在"幻觉"（即未在参考资料中出现的信息）。
-
-                分析要求：
-                1. 逐句检查答案中的每个事实性陈述
-                2. 判断每个陈述是否有参考资料支撑
-                3. 计算幻觉比例（幻觉语句数/总语句数）
-
-                参考资料：
-                %s
-
-                答案：
-                %s
-
-                请按以下格式返回：
-                幻觉比例: 0.0-1.0之间的数字
-                幻觉内容: 列出具体的幻觉语句（如有）
-
-                示例输出：
-                幻觉比例: 0.2
-                幻觉内容:
-                - "该功能于2020年发布"（参考资料未提及发布时间）
-                """;
-
-    // ===== 上下文维度 + 答案正确性 prompt（RAGAS 式，LLM-as-Judge） =====
-
-    private static final String CONTEXT_PRECISION_PROMPT_TEMPLATE = """
-                请评估检索到的每个上下文片段对回答用户问题的有用程度（上下文精确率）。
-
-                用户问题：%s
-
-                检索到的上下文片段（已编号）：
-                %s
-
-                分析要求：
-                1. 逐条判断每个编号片段是否对回答该问题相关且有用（1=相关有用, 0=无关或噪声）
-                2. 计算上下文精确率 = 相关片段数 / 总片段数
-
-                请只返回一个0-1之间的数字（相关片段占比），不要解释：
-                """;
-
-    private static final String CONTEXT_RECALL_PROMPT_TEMPLATE = """
-                请评估检索到的上下文能否支撑标准答案的每个要点（上下文召回率）。
-
-                标准答案：
-                %s
-
-                检索到的上下文：
-                %s
-
-                分析要求：
-                1. 将标准答案拆分为若干事实要点
-                2. 逐个判断每个要点能否从检索上下文中找到支撑（1=可推断, 0=无法推断）
-                3. 计算上下文召回率 = 可推断要点数 / 总要点数
-
-                请只返回一个0-1之间的数字（可推断要点占比），不要解释：
-                """;
-
-    private static final String CONTEXT_RELEVANCE_PROMPT_TEMPLATE = """
-                请评估检索到的上下文与用户问题的整体相关度（上下文相关性）。
-
-                评分标准：
-                - 1.0分：上下文完全切题，全是相关信息
-                - 0.8分：上下文大部分相关，少量冗余
-                - 0.6分：上下文部分相关，存在一定噪声
-                - 0.4分：上下文相关性较弱，多为边缘信息
-                - 0.2分：上下文基本与问题无关
-                - 0.0分：上下文完全无关
-
-                用户问题：%s
-
-                检索到的上下文：
-                %s
-
-                请只返回一个0-1之间的数字分数，不要解释：
-                """;
-
-    private static final String ANSWER_CORRECTNESS_PROMPT_TEMPLATE = """
-                请评估实际答案相对标准答案的事实正确性（答案正确性，区别于覆盖率）。
-
-                评分标准：
-                - 1.0分：实际答案事实完全正确，无任何错误陈述
-                - 0.8分：实际答案基本正确，有极少量不够严谨的表述
-                - 0.6分：实际答案部分正确，存在少量事实错误
-                - 0.4分：实际答案正确性一般，有明显事实错误
-                - 0.2分：实际答案大部分事实错误
-                - 0.0分：实际答案完全错误
-
-                标准答案：%s
-
-                实际答案：%s
-
-                请只返回一个0-1之间的数字分数，不要解释：
-                """;
+    public LlmJudgeAdapter(RubricService rubricService) {
+        this.rubricService = rubricService;
+    }
 
     @Override
     public JudgeVerdict judge(String query, String standardAnswer, String actualAnswer, List<String> retrievedChunks) {
@@ -213,40 +57,53 @@ public class LlmJudgeAdapter implements ILlmJudgePort {
             return degradedVerdict("LLM未配置或未启用");
         }
 
-        String context = retrievedChunks == null || retrievedChunks.isEmpty()
-                ? "" : String.join("\n---\n", retrievedChunks);
+        Map<String, String> templates = rubricService.resolveJudgePromptTemplates();
+        Map<String, String> vars = RubricPromptRenderer.buildVars(query, standardAnswer, actualAnswer, retrievedChunks);
+        List<String> unknownKeys = new ArrayList<>();
 
+        double faithfulness = judgeScore(BuiltinRubrics.KEY_FAITHFULNESS, templates, vars, unknownKeys);
+        double relevance = judgeScore(BuiltinRubrics.KEY_RELEVANCY, templates, vars, unknownKeys);
+        double completeness = judgeScore(BuiltinRubrics.KEY_COMPLETENESS, templates, vars, unknownKeys);
+        double similarity = judgeScore(BuiltinRubrics.KEY_SIMILARITY, templates, vars, unknownKeys);
+        // 答案正确性：事实层面的对错（需标准答案，无标准答案则降级为 0）
+        double answerCorrectness = (standardAnswer == null || standardAnswer.isEmpty())
+                ? 0.0 : judgeScore(BuiltinRubrics.KEY_ANSWER_CORRECTNESS, templates, vars, unknownKeys);
+        // 上下文精确率：无检索内容时确定性 0（旧口径短路）
+        double contextPrecision = (retrievedChunks == null || retrievedChunks.isEmpty())
+                ? 0.0 : judgeScore(BuiltinRubrics.KEY_CONTEXT_PRECISION, templates, vars, unknownKeys);
+        // 上下文召回率：需标准答案
+        double contextRecall = (standardAnswer == null || standardAnswer.isEmpty())
+                ? 0.0 : judgeScore(BuiltinRubrics.KEY_CONTEXT_RECALL, templates, vars, unknownKeys);
+        double contextRelevance = judgeScore(BuiltinRubrics.KEY_CONTEXT_RELEVANCE, templates, vars, unknownKeys);
+        HallucinationResult hallucination = detectHallucination(templates, vars, unknownKeys);
+
+        return JudgeVerdict.builder()
+                .faithfulness(round(faithfulness))
+                .relevance(round(relevance))
+                .hallucinationRate(round(hallucination.rate))
+                .completeness(round(completeness))
+                .similarity(round(similarity))
+                .answerCorrectness(round(answerCorrectness))
+                .contextPrecision(round(contextPrecision))
+                .contextRecall(round(contextRecall))
+                .contextRelevance(round(contextRelevance))
+                .detail(String.format("幻觉检测: %s", hallucination.detail))
+                .degraded(false)
+                .unknownKeys(unknownKeys)
+                .build();
+    }
+
+    @Override
+    public String complete(String prompt) {
+        if (!available() || prompt == null || prompt.isBlank()) {
+            return null;
+        }
         try {
-            double faithfulness = evaluateFaithfulness(actualAnswer, context);
-            double relevance = evaluateRelevancy(query, actualAnswer);
-            HallucinationResult hallucination = detectHallucination(actualAnswer, context);
-            double completeness = evaluateCompleteness(standardAnswer, actualAnswer);
-            double similarity = evaluateSimilarity(standardAnswer, actualAnswer);
-            // 答案正确性：事实层面的对错（需标准答案，无标准答案则降级为 0）
-            double answerCorrectness = (standardAnswer == null || standardAnswer.isEmpty())
-                    ? 0.0 : evaluateAnswerCorrectness(standardAnswer, actualAnswer);
-            // 上下文维度（RAGAS 式，需检索内容）
-            double contextPrecision = evaluateContextPrecision(query, retrievedChunks);
-            double contextRecall = (standardAnswer == null || standardAnswer.isEmpty())
-                    ? 0.0 : evaluateContextRecall(standardAnswer, context);
-            double contextRelevance = evaluateContextRelevance(query, context);
-
-            return JudgeVerdict.builder()
-                    .faithfulness(round(faithfulness))
-                    .relevance(round(relevance))
-                    .hallucinationRate(round(hallucination.rate))
-                    .completeness(round(completeness))
-                    .similarity(round(similarity))
-                    .answerCorrectness(round(answerCorrectness))
-                    .contextPrecision(round(contextPrecision))
-                    .contextRecall(round(contextRecall))
-                    .contextRelevance(round(contextRelevance))
-                    .detail(String.format("幻觉检测: %s", hallucination.detail))
-                    .degraded(false)
-                    .build();
+            return chatModel.call(new Prompt(new UserMessage(prompt)))
+                    .getResult().getOutput().getText();
         } catch (Exception e) {
-            log.warn("LLM评判失败, query={}, err={}", query, e.getMessage());
-            return degradedVerdict("评判失败: " + e.getMessage());
+            log.warn("LLM 原始补全失败: {}", e.getMessage());
+            return null;
         }
     }
 
@@ -256,131 +113,49 @@ public class LlmJudgeAdapter implements ILlmJudgePort {
     }
 
     /**
-     * 评估忠实度 — 答案是否基于检索内容
+     * 按 Rubric 维度模板渲染并评分 — 解析失败/调用失败时记入 unknownKeys 并返回旧口径默认分 0.5。
+     * 模板缺失（维度被禁用）时用内置模板兜底，保证 9 维始终可评。
      */
-    private double evaluateFaithfulness(String answer, String context) {
-        String prompt = String.format(FAITHFULNESS_PROMPT_TEMPLATE,
-                truncate(context, 3000), truncate(answer, 1000));
-        return callLLMForScore(prompt, 0.5);
-    }
-
-    /**
-     * 评估相关度 — 答案是否回答了问题
-     */
-    private double evaluateRelevancy(String query, String answer) {
-        String prompt = String.format(RELEVANCY_PROMPT_TEMPLATE,
-                truncate(query, 500), truncate(answer, 1000));
-        return callLLMForScore(prompt, 0.5);
-    }
-
-    /**
-     * 评估完整性 — 答案覆盖标准答案要点的程度
-     */
-    private double evaluateCompleteness(String standardAnswer, String actualAnswer) {
-        String prompt = String.format(COMPLETENESS_PROMPT_TEMPLATE,
-                truncate(standardAnswer, 1000), truncate(actualAnswer, 1000));
-        return callLLMForScore(prompt, 0.5);
-    }
-
-    /**
-     * 评估语义相似度 — 答案与标准答案的语义接近度
-     */
-    private double evaluateSimilarity(String standardAnswer, String actualAnswer) {
-        String prompt = String.format(SIMILARITY_PROMPT_TEMPLATE,
-                truncate(standardAnswer, 1000), truncate(actualAnswer, 1000));
-        return callLLMForScore(prompt, 0.5);
-    }
-
-    // ===== 上下文维度 + 答案正确性评估 =====
-
-    /**
-     * 上下文精确率 — 逐条判定检索 chunk 对回答 query 是否相关（一个 prompt 批量处理，控成本）
-     */
-    private double evaluateContextPrecision(String query, List<String> chunks) {
-        if (chunks == null || chunks.isEmpty()) {
-            return 0.0;
+    private double judgeScore(String key, Map<String, String> templates, Map<String, String> vars,
+                              List<String> unknownKeys) {
+        String template = templates.get(key);
+        if (template == null) {
+            template = BuiltinRubrics.JUDGE_TEMPLATES.get(key);
         }
-        StringBuilder numbered = new StringBuilder();
-        for (int i = 0; i < chunks.size(); i++) {
-            numbered.append("[").append(i + 1).append("] ")
-                    .append(truncate(chunks.get(i), 500)).append("\n");
-        }
-        String prompt = String.format(CONTEXT_PRECISION_PROMPT_TEMPLATE,
-                truncate(query, 500), truncate(numbered.toString(), 3000));
-        return callLLMForScore(prompt, 0.5);
-    }
-
-    /**
-     * 上下文召回率 — 标准答案要点能否从检索上下文推断
-     */
-    private double evaluateContextRecall(String standardAnswer, String context) {
-        String prompt = String.format(CONTEXT_RECALL_PROMPT_TEMPLATE,
-                truncate(standardAnswer, 1000), truncate(context, 3000));
-        return callLLMForScore(prompt, 0.5);
-    }
-
-    /**
-     * 上下文相关性 — 检索内容与 query 的整体相关度
-     */
-    private double evaluateContextRelevance(String query, String context) {
-        String prompt = String.format(CONTEXT_RELEVANCE_PROMPT_TEMPLATE,
-                truncate(query, 500), truncate(context, 3000));
-        return callLLMForScore(prompt, 0.5);
-    }
-
-    /**
-     * 答案正确性 — 实际答案相对标准答案的事实正确性
-     */
-    private double evaluateAnswerCorrectness(String standardAnswer, String actualAnswer) {
-        String prompt = String.format(ANSWER_CORRECTNESS_PROMPT_TEMPLATE,
-                truncate(standardAnswer, 1000), truncate(actualAnswer, 1000));
-        return callLLMForScore(prompt, 0.5);
-    }
-
-    /**
-     * 检测幻觉 — 答案中包含未在检索内容中出现的信息
-     */
-    private HallucinationResult detectHallucination(String answer, String context) {
-        String prompt = String.format(HALLUCINATION_PROMPT_TEMPLATE,
-                truncate(context, 3000), truncate(answer, 1000));
-
+        String prompt = RubricPromptRenderer.render(template, vars);
         try {
             String result = chatModel.call(new Prompt(new UserMessage(prompt)))
                     .getResult().getOutput().getText();
+            Matcher matcher = SCORE_PATTERN.matcher(result);
+            if (matcher.find()) {
+                return clamp(Double.parseDouble(matcher.group(1)));
+            }
+        } catch (Exception e) {
+            log.warn("LLM评分调用失败[{}]: {}", key, e.getMessage());
+        }
+        unknownKeys.add(key);
+        return 0.5;
+    }
 
+    /**
+     * 检测幻觉 — 答案中包含未在检索内容中出现的信息（模板渲染收编，解析口径不变）。
+     */
+    private HallucinationResult detectHallucination(Map<String, String> templates, Map<String, String> vars,
+                                                    List<String> unknownKeys) {
+        String template = templates.getOrDefault(BuiltinRubrics.KEY_HALLUCINATION,
+                BuiltinRubrics.JUDGE_TEMPLATES.get(BuiltinRubrics.KEY_HALLUCINATION));
+        String prompt = RubricPromptRenderer.render(template, vars);
+        try {
+            String result = chatModel.call(new Prompt(new UserMessage(prompt)))
+                    .getResult().getOutput().getText();
             double rate = extractHallucinationRate(result);
             String detail = truncate(result, 200);
             return new HallucinationResult(rate, detail);
         } catch (Exception e) {
             log.warn("幻觉检测失败: {}", e.getMessage());
+            unknownKeys.add(BuiltinRubrics.KEY_HALLUCINATION);
             return new HallucinationResult(0.0, "检测失败: " + e.getMessage());
         }
-    }
-
-    /**
-     * 调用LLM获取分数
-     */
-    private double callLLMForScore(String prompt, double defaultScore) {
-        try {
-            String result = chatModel.call(new Prompt(new UserMessage(prompt)))
-                    .getResult().getOutput().getText();
-            return extractScore(result, defaultScore);
-        } catch (Exception e) {
-            log.warn("LLM评分调用失败: {}", e.getMessage());
-            return defaultScore;
-        }
-    }
-
-    /**
-     * 从LLM响应中提取分数
-     */
-    private double extractScore(String response, double defaultScore) {
-        Matcher matcher = SCORE_PATTERN.matcher(response);
-        if (matcher.find()) {
-            double score = Double.parseDouble(matcher.group(1));
-            return clamp(score);
-        }
-        return defaultScore;
     }
 
     /**
@@ -393,7 +168,11 @@ public class LlmJudgeAdapter implements ILlmJudgePort {
             return clamp(rate);
         }
         // 降级尝试直接提取第一个数字
-        return extractScore(response, 0.0);
+        Matcher score = SCORE_PATTERN.matcher(response);
+        if (score.find()) {
+            return clamp(Double.parseDouble(score.group(1)));
+        }
+        return 0.0;
     }
 
     private double clamp(double v) {
@@ -422,6 +201,7 @@ public class LlmJudgeAdapter implements ILlmJudgePort {
                 .contextRelevance(0.0)
                 .detail(reason)
                 .degraded(true)
+                .unknownKeys(new ArrayList<>(ALL_JUDGE_KEYS))
                 .build();
     }
 
