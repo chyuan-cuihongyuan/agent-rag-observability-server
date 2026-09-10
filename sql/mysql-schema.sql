@@ -1,0 +1,218 @@
+-- =============================================================================
+-- 观测服务 8 表建表脚本（MySQL 版）
+-- 工单 0123（三期 O3：PG 全量 DDL 翻译）补账：为从未入库过 DDL 的表补建脚本，2026-09-10。
+-- 口径：
+--   (1) agent_decision_log / rag_retrieval_log / chat_result_log 三表以
+--       docs/02-agent-rag-observability-server/09-补充技术细节.md 第 1040-1128 行
+--       的 MySQL DDL 为准（已去除全部反引号）；mapper INSERT 中存在而文档缺失的
+--       演进列逐列补齐（详见各表注释中的「补列」标记）。
+--       特别说明：rag_retrieval_log 文档中的 cost_time_ms 列在 mapper 中已演进为
+--       retrieval_cost_ms（同语义：检索耗时），本脚本按 mapper 实际写入列命名，
+--       类型沿用文档 BIGINT。
+--   (2) tool_call_log / memory_recall_log / eval_dataset / eval_task / eval_result
+--       五表从 agent-rag-observability-server-app 的 mapper XML 全部 SQL 列集
+--       + infrastructure dao/po 对应 PO 字段类型反推。
+-- 类型口径：TINYINT 对应 PO Integer 状态/开关列；eval 分数列 PO 为 Double →
+--   DECIMAL(10,6)；JSON 列（PO 为 String，以 JSON 文本读写）MySQL 侧保留 JSON 类型；
+--   反推表的 *_json 文本列用 TEXT。不使用 ON UPDATE CURRENT_TIMESTAMP，updated
+--   时间统一由应用层维护（mapper UPDATE 语句已显式写 update_time = NOW()）。
+-- 唯一键反推依据（重点注明）：
+--   eval_dataset  uk_dataset_id：selectByDatasetId 按 dataset_id 精确定位单数据集。
+--   eval_task     uk_task_id   ：selectByTaskId / updateStatus / updateProgress /
+--                                updateTotalCount 均按 task_id 精确定位单任务。
+--   日志类 4 表（agent_decision_log / rag_retrieval_log / chat_result_log /
+--   tool_call_log / memory_recall_log）与 eval_result：纯追加账本，无唯一键；
+--   eval_result 同一 task_id 下多条明细，仅建普通索引。
+-- =============================================================================
+
+-- 1. Agent 决策日志表（以 docs/02/09 L1040-1062 为准；mapper 补 4 列：
+--    tool_call_times / tool_retry_times / model_version / error_message）
+CREATE TABLE IF NOT EXISTS agent_decision_log (
+    id                BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    trace_id          VARCHAR(64)  NOT NULL COMMENT '链路追踪ID',
+    tenant_id         VARCHAR(64)  DEFAULT '' COMMENT '租户ID',
+    owner_user_id     VARCHAR(64)  DEFAULT '' COMMENT '所属用户ID',
+    session_id        VARCHAR(64)  DEFAULT '' COMMENT '会话ID',
+    agent_id          VARCHAR(64)  NOT NULL COMMENT '智能体ID',
+    source_service    VARCHAR(32)  NOT NULL COMMENT '来源服务',
+    user_query        TEXT         COMMENT '用户查询',
+    intent_type       VARCHAR(64)  DEFAULT '' COMMENT '意图类型',
+    branch_type       VARCHAR(32)  NOT NULL COMMENT '分支类型',
+    selected_tool_list JSON        COMMENT '选择的工具列表（JSON 文本，PO String）',
+    plan_steps        JSON         COMMENT '规划步骤（JSON 文本，PO String）',
+    decision_reason   TEXT         COMMENT '决策原因',
+    tool_call_times   INT          DEFAULT 0 COMMENT '工具调用次数（mapper 演进补列）',
+    tool_retry_times  INT          DEFAULT 0 COMMENT '工具重试次数（mapper 演进补列）',
+    model_version     VARCHAR(64)  DEFAULT NULL COMMENT '模型版本（mapper 演进补列）',
+    agent_status      VARCHAR(32)  NOT NULL COMMENT 'Agent状态',
+    error_message     TEXT         COMMENT '错误信息（mapper 演进补列）',
+    cost_time_ms      BIGINT       DEFAULT 0 COMMENT '耗时(毫秒)',
+    create_time       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    PRIMARY KEY (id),
+    INDEX idx_trace_id (trace_id),
+    INDEX idx_session_id (session_id),
+    INDEX idx_agent_id (agent_id),
+    INDEX idx_create_time (create_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Agent决策日志表';
+
+-- 2. RAG 检索日志表（以 docs/02/09 L1068-1089 为准；mapper 补 3 列：source_service /
+--    retrieval_cost_ms（取代文档 cost_time_ms，同语义）/ rag_strategy_version）
+CREATE TABLE IF NOT EXISTS rag_retrieval_log (
+    id                 BIGINT      NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    trace_id           VARCHAR(64) NOT NULL COMMENT '链路追踪ID',
+    tenant_id          VARCHAR(64) DEFAULT '' COMMENT '租户ID',
+    owner_user_id      VARCHAR(64) DEFAULT '' COMMENT '所属用户ID',
+    session_id         VARCHAR(64) DEFAULT '' COMMENT '会话ID',
+    agent_id           VARCHAR(64) NOT NULL COMMENT '智能体ID',
+    source_service     VARCHAR(32) NOT NULL COMMENT '来源服务（mapper 演进补列）',
+    query_text         TEXT        COMMENT '原始查询',
+    rewrite_text       TEXT        COMMENT '改写查询',
+    retrieval_topk     INT         DEFAULT 0 COMMENT '检索TopK',
+    retrieval_count    INT         DEFAULT 0 COMMENT '召回数量',
+    source_docs        JSON        COMMENT '来源文档（JSON 文本，PO String）',
+    rerank_scores      JSON        COMMENT '重排序分数（JSON 文本，PO String）',
+    empty_retrieval    TINYINT     DEFAULT 0 COMMENT '是否空召回：0-否，1-是（PO Integer）',
+    retrieval_stages   JSON        COMMENT '检索阶段（JSON 文本，PO String）',
+    retrieval_cost_ms  BIGINT      DEFAULT 0 COMMENT '检索耗时(毫秒)（文档列 cost_time_ms 的 mapper 实名）',
+    rag_strategy_version VARCHAR(64) DEFAULT NULL COMMENT 'RAG策略版本（mapper 演进补列）',
+    cost_time_ms       BIGINT      DEFAULT 0 COMMENT '总耗时(毫秒)（文档保留列，mapper 现未写入）',
+    create_time        DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    PRIMARY KEY (id),
+    INDEX idx_trace_id (trace_id),
+    INDEX idx_session_id (session_id),
+    INDEX idx_create_time (create_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='RAG检索日志表';
+
+-- 3. 问答结果日志表（以 docs/02/09 L1095-1113 为准；mapper 补 2 列：
+--    source_service / model_version）
+CREATE TABLE IF NOT EXISTS chat_result_log (
+    id                 BIGINT      NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    trace_id           VARCHAR(64) NOT NULL COMMENT '链路追踪ID',
+    tenant_id          VARCHAR(64) DEFAULT '' COMMENT '租户ID',
+    owner_user_id      VARCHAR(64) DEFAULT '' COMMENT '所属用户ID',
+    session_id         VARCHAR(64) DEFAULT '' COMMENT '会话ID',
+    agent_id           VARCHAR(64) NOT NULL COMMENT '智能体ID',
+    source_service     VARCHAR(32) NOT NULL COMMENT '来源服务（mapper 演进补列）',
+    question           TEXT        COMMENT '用户问题',
+    answer             TEXT        COMMENT '模型回答',
+    prompt_tokens      BIGINT      DEFAULT 0 COMMENT 'Prompt Token',
+    completion_tokens  BIGINT      DEFAULT 0 COMMENT 'Completion Token',
+    total_cost_time_ms BIGINT      DEFAULT 0 COMMENT '总耗时(毫秒)',
+    final_status       VARCHAR(32) NOT NULL COMMENT '最终状态',
+    model_version      VARCHAR(64) DEFAULT NULL COMMENT '模型版本（mapper 演进补列）',
+    create_time        DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    PRIMARY KEY (id),
+    INDEX idx_trace_id (trace_id),
+    INDEX idx_session_id (session_id),
+    INDEX idx_create_time (create_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='问答结果日志表';
+
+-- 4. 工具调用日志表（反推：tool_call_log_mapper.xml INSERT 列集 + ToolCallLogPO）
+CREATE TABLE IF NOT EXISTS tool_call_log (
+    id              BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    trace_id        VARCHAR(64)  NOT NULL COMMENT '链路追踪ID',
+    span_id         VARCHAR(64)  DEFAULT NULL COMMENT '跨度ID',
+    parent_span_id  VARCHAR(64)  DEFAULT NULL COMMENT '父跨度ID',
+    tool_name       VARCHAR(128) NOT NULL COMMENT '工具名称',
+    tool_input      TEXT         COMMENT '工具入参（JSON 文本，PO String）',
+    tool_output     TEXT         COMMENT '工具输出（JSON 文本，PO String）',
+    status          VARCHAR(32)  NOT NULL COMMENT '调用状态（SUCCESS/FAILURE 等）',
+    cost_time_ms    INT          DEFAULT 0 COMMENT '耗时(毫秒)（PO Integer）',
+    error_message   TEXT         COMMENT '错误信息',
+    call_order      INT          DEFAULT 0 COMMENT '调用序号（同链路内的顺序）',
+    create_time     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    PRIMARY KEY (id),
+    INDEX idx_trace_id (trace_id),
+    INDEX idx_create_time (create_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='工具调用日志表';
+
+-- 5. 记忆召回日志表（反推：memory_recall_log_mapper.xml INSERT 列集 + MemoryRecallLogPO）
+CREATE TABLE IF NOT EXISTS memory_recall_log (
+    id                   BIGINT      NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    trace_id             VARCHAR(64) NOT NULL COMMENT '链路追踪ID',
+    query_text           TEXT        COMMENT '原始查询',
+    session_memory_count INT         DEFAULT 0 COMMENT '会话记忆召回条数（PO Integer）',
+    agent_memory_count   INT         DEFAULT 0 COMMENT '智能体记忆召回条数（PO Integer）',
+    session_memory_scores TEXT       COMMENT '会话记忆评分列表（JSON 文本，PO String）',
+    agent_memory_scores  TEXT        COMMENT '智能体记忆评分列表（JSON 文本，PO String）',
+    inject_content       TEXT        COMMENT '注入上下文内容',
+    cost_time_ms         INT         DEFAULT 0 COMMENT '耗时(毫秒)（PO Integer）',
+    create_time          DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    PRIMARY KEY (id),
+    INDEX idx_trace_id (trace_id),
+    INDEX idx_create_time (create_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='记忆召回日志表';
+
+-- 6. 评测数据集表（反推：eval_dataset_mapper.xml INSERT/SELECT 列集 + EvalDatasetPO）
+CREATE TABLE IF NOT EXISTS eval_dataset (
+    id           BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    dataset_id   VARCHAR(64)  NOT NULL COMMENT '数据集业务ID（唯一）',
+    dataset_name VARCHAR(128) NOT NULL COMMENT '数据集名称',
+    description  VARCHAR(512) DEFAULT NULL COMMENT '数据集描述',
+    item_count   INT          DEFAULT 0 COMMENT '条目数（PO Integer）',
+    items_json   TEXT         COMMENT '数据集条目 JSON 数组（文本读写，PO String）',
+    create_time  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '更新时间（应用层维护）',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_dataset_id (dataset_id),
+    INDEX idx_create_time (create_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='评测数据集表';
+
+-- 7. 评测任务表（反推：eval_task_mapper.xml 全部 SQL 列集 + EvalTaskPO）
+CREATE TABLE IF NOT EXISTS eval_task (
+    id                  BIGINT        NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    task_id             VARCHAR(64)   NOT NULL COMMENT '任务业务ID（唯一）',
+    task_name           VARCHAR(128)  NOT NULL COMMENT '任务名称',
+    eval_type           VARCHAR(32)   NOT NULL COMMENT '评测类型（RAG/AGENT 等）',
+    dataset_id          VARCHAR(64)   NOT NULL COMMENT '关联数据集业务ID',
+    status              VARCHAR(32)   NOT NULL COMMENT '任务状态（PENDING/RUNNING/COMPLETED/FAILED）',
+    total_count         INT           DEFAULT 0 COMMENT '总条目数（PO Integer）',
+    completed_count     INT           DEFAULT 0 COMMENT '已完成条目数（PO Integer）',
+    model_version       VARCHAR(64)   DEFAULT NULL COMMENT '模型版本',
+    rag_strategy_version VARCHAR(64)   DEFAULT NULL COMMENT 'RAG策略版本',
+    avg_overall_score   DECIMAL(10,6) DEFAULT NULL COMMENT '平均总分（PO Double）',
+    create_time         DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time         DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '更新时间（应用层维护）',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_task_id (task_id),
+    INDEX idx_status_update (status, update_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='评测任务表';
+
+-- 8. 评测结果表（反推：eval_result_mapper.xml INSERT/batchInsert/SELECT 全部 31 业务列
+--    逐列核对 + EvalResultPO；分数列 PO 均 Double → DECIMAL(10,6)）
+CREATE TABLE IF NOT EXISTS eval_result (
+    id                   BIGINT        NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    task_id              VARCHAR(64)   NOT NULL COMMENT '评测任务业务ID（一任务多条明细）',
+    trace_id             VARCHAR(64)   DEFAULT NULL COMMENT '链路追踪ID',
+    query_text           TEXT          COMMENT '评测问题',
+    standard_answer      TEXT          COMMENT '标准答案',
+    actual_answer        TEXT          COMMENT '实际回答',
+    recall_score         DECIMAL(10,6) DEFAULT NULL COMMENT '召回率',
+    precision_score      DECIMAL(10,6) DEFAULT NULL COMMENT '精确率',
+    f1_score             DECIMAL(10,6) DEFAULT NULL COMMENT 'F1 分数',
+    top3_hit_rate        DECIMAL(10,6) DEFAULT NULL COMMENT 'Top3 命中率',
+    mrr_score            DECIMAL(10,6) DEFAULT NULL COMMENT 'MRR 分数',
+    ndcg_score           DECIMAL(10,6) DEFAULT NULL COMMENT 'NDCG 分数',
+    map_score            DECIMAL(10,6) DEFAULT NULL COMMENT 'MAP 分数',
+    answer_similarity    DECIMAL(10,6) DEFAULT NULL COMMENT '答案相似度',
+    context_precision    DECIMAL(10,6) DEFAULT NULL COMMENT '上下文精确率',
+    context_recall       DECIMAL(10,6) DEFAULT NULL COMMENT '上下文召回率',
+    context_relevance    DECIMAL(10,6) DEFAULT NULL COMMENT '上下文相关性',
+    faithfulness_score   DECIMAL(10,6) DEFAULT NULL COMMENT '忠实度',
+    relevance_score      DECIMAL(10,6) DEFAULT NULL COMMENT '相关性',
+    hallucination_flag   TINYINT       DEFAULT 0 COMMENT '幻觉标记：0-无，1-有（PO Integer）',
+    completeness_score   DECIMAL(10,6) DEFAULT NULL COMMENT '完整性',
+    answer_correctness   DECIMAL(10,6) DEFAULT NULL COMMENT '答案正确性',
+    overall_score        DECIMAL(10,6) DEFAULT NULL COMMENT '总分',
+    eval_detail          TEXT          COMMENT '评测明细 JSON 文本（PO String）',
+    tool_selection_score DECIMAL(10,6) DEFAULT NULL COMMENT '工具选择分项（结构化落库）',
+    tool_param_score     DECIMAL(10,6) DEFAULT NULL COMMENT '工具参数分项（结构化落库）',
+    tool_call_score      DECIMAL(10,6) DEFAULT NULL COMMENT '工具调用分项（结构化落库）',
+    intent_score         DECIMAL(10,6) DEFAULT NULL COMMENT '意图识别分项（结构化落库）',
+    branch_score         DECIMAL(10,6) DEFAULT NULL COMMENT '分支决策分项（结构化落库）',
+    reasoning_score      DECIMAL(10,6) DEFAULT NULL COMMENT '推理过程分项（结构化落库）',
+    agent_decision_score DECIMAL(10,6) DEFAULT NULL COMMENT 'Agent 决策总分项（结构化落库）',
+    create_time          DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    PRIMARY KEY (id),
+    INDEX idx_task_time (task_id, create_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='评测结果表';

@@ -1,0 +1,341 @@
+-- =============================================================================
+-- 观测服务 8 表建表脚本（PostgreSQL 版）
+-- 工单 0123（三期 O3：PG 全量 DDL 翻译）补账：为从未入库过 DDL 的表补建脚本，2026-09-10。
+-- 口径：
+--   (1) agent_decision_log / rag_retrieval_log / chat_result_log 三表以
+--       docs/02-agent-rag-observability-server/09-补充技术细节.md 第 1040-1128 行
+--       的 MySQL DDL 为准（已去除全部反引号）；mapper INSERT 中存在而文档缺失的
+--       演进列逐列补齐（详见各表注释中的「补列」标记）。
+--       特别说明：rag_retrieval_log 文档中的 cost_time_ms 列在 mapper 中已演进为
+--       retrieval_cost_ms（同语义：检索耗时），本脚本按 mapper 实际写入列命名，
+--       类型沿用文档 BIGINT；文档原 cost_time_ms 列一并保留以防回滚双写。
+--   (2) tool_call_log / memory_recall_log / eval_dataset / eval_task / eval_result
+--       五表从 agent-rag-observability-server-app 的 mapper XML 全部 SQL 列集
+--       + infrastructure dao/po 对应 PO 字段类型反推。
+-- 类型映射（对齐 dev-ops/postgresql/01-gateway-seed.sql 口径）：
+--   AUTO_INCREMENT → BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY；
+--   DATETIME → TIMESTAMP；ON UPDATE CURRENT_TIMESTAMP 移除（双方言统一改应用层
+--   维护，mapper UPDATE 语句已显式写 update_time = NOW()）；
+--   TINYINT（PO Integer 状态/开关）→ SMALLINT（保持 JDBC Integer 映射）；
+--   JSON 列（PO 为 String，以 JSON 文本读写）→ TEXT（保持 MyBatis 字符串读写兼容，
+--   不用 jsonb/json）；eval 分数列 PO 为 Double → DECIMAL(10,6) 双方言同名。
+-- 唯一键反推依据（重点注明）：
+--   eval_dataset  uk_dataset_id：selectByDatasetId 按 dataset_id 精确定位单数据集。
+--   eval_task     uk_task_id   ：selectByTaskId / updateStatus / updateProgress /
+--                                updateTotalCount 均按 task_id 精确定位单任务。
+--   日志类表与 eval_result：纯追加账本，无唯一键；eval_result 同一 task_id 下
+--   多条明细，仅建普通索引。
+-- =============================================================================
+
+-- 1. Agent 决策日志表（以 docs/02/09 L1040-1062 为准；mapper 补 4 列：
+--    tool_call_times / tool_retry_times / model_version / error_message）
+CREATE TABLE IF NOT EXISTS agent_decision_log (
+    id                 BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    trace_id           VARCHAR(64)  NOT NULL,
+    tenant_id          VARCHAR(64)  DEFAULT '',
+    owner_user_id      VARCHAR(64)  DEFAULT '',
+    session_id         VARCHAR(64)  DEFAULT '',
+    agent_id           VARCHAR(64)  NOT NULL,
+    source_service     VARCHAR(32)  NOT NULL,
+    user_query         TEXT,
+    intent_type        VARCHAR(64)  DEFAULT '',
+    branch_type        VARCHAR(32)  NOT NULL,
+    selected_tool_list TEXT,
+    plan_steps         TEXT,
+    decision_reason    TEXT,
+    tool_call_times    INT          DEFAULT 0,
+    tool_retry_times   INT          DEFAULT 0,
+    model_version      VARCHAR(64)  DEFAULT NULL,
+    agent_status       VARCHAR(32)  NOT NULL,
+    error_message      TEXT,
+    cost_time_ms       BIGINT       DEFAULT 0,
+    create_time        TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+COMMENT ON TABLE agent_decision_log IS 'Agent决策日志表';
+COMMENT ON COLUMN agent_decision_log.trace_id IS '链路追踪ID';
+COMMENT ON COLUMN agent_decision_log.tenant_id IS '租户ID';
+COMMENT ON COLUMN agent_decision_log.owner_user_id IS '所属用户ID';
+COMMENT ON COLUMN agent_decision_log.session_id IS '会话ID';
+COMMENT ON COLUMN agent_decision_log.agent_id IS '智能体ID';
+COMMENT ON COLUMN agent_decision_log.source_service IS '来源服务';
+COMMENT ON COLUMN agent_decision_log.user_query IS '用户查询';
+COMMENT ON COLUMN agent_decision_log.intent_type IS '意图类型';
+COMMENT ON COLUMN agent_decision_log.branch_type IS '分支类型';
+COMMENT ON COLUMN agent_decision_log.selected_tool_list IS '选择的工具列表（JSON 文本，PO String→TEXT）';
+COMMENT ON COLUMN agent_decision_log.plan_steps IS '规划步骤（JSON 文本，PO String→TEXT）';
+COMMENT ON COLUMN agent_decision_log.decision_reason IS '决策原因';
+COMMENT ON COLUMN agent_decision_log.tool_call_times IS '工具调用次数（mapper 演进补列）';
+COMMENT ON COLUMN agent_decision_log.tool_retry_times IS '工具重试次数（mapper 演进补列）';
+COMMENT ON COLUMN agent_decision_log.model_version IS '模型版本（mapper 演进补列）';
+COMMENT ON COLUMN agent_decision_log.agent_status IS 'Agent状态';
+COMMENT ON COLUMN agent_decision_log.error_message IS '错误信息（mapper 演进补列）';
+COMMENT ON COLUMN agent_decision_log.cost_time_ms IS '耗时(毫秒)';
+COMMENT ON COLUMN agent_decision_log.create_time IS '创建时间';
+CREATE INDEX IF NOT EXISTS idx_adl_trace_id ON agent_decision_log (trace_id);
+CREATE INDEX IF NOT EXISTS idx_adl_session_id ON agent_decision_log (session_id);
+CREATE INDEX IF NOT EXISTS idx_adl_agent_id ON agent_decision_log (agent_id);
+CREATE INDEX IF NOT EXISTS idx_adl_create_time ON agent_decision_log (create_time);
+
+-- 2. RAG 检索日志表（以 docs/02/09 L1068-1089 为准；mapper 补 3 列：source_service /
+--    retrieval_cost_ms（取代文档 cost_time_ms，同语义）/ rag_strategy_version）
+CREATE TABLE IF NOT EXISTS rag_retrieval_log (
+    id                   BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    trace_id             VARCHAR(64) NOT NULL,
+    tenant_id            VARCHAR(64) DEFAULT '',
+    owner_user_id        VARCHAR(64) DEFAULT '',
+    session_id           VARCHAR(64) DEFAULT '',
+    agent_id             VARCHAR(64) NOT NULL,
+    source_service       VARCHAR(32) NOT NULL,
+    query_text           TEXT,
+    rewrite_text         TEXT,
+    retrieval_topk       INT         DEFAULT 0,
+    retrieval_count      INT         DEFAULT 0,
+    source_docs          TEXT,
+    rerank_scores        TEXT,
+    empty_retrieval      SMALLINT    DEFAULT 0,
+    retrieval_stages     TEXT,
+    retrieval_cost_ms    BIGINT      DEFAULT 0,
+    rag_strategy_version VARCHAR(64) DEFAULT NULL,
+    cost_time_ms         BIGINT      DEFAULT 0,
+    create_time          TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+COMMENT ON TABLE rag_retrieval_log IS 'RAG检索日志表';
+COMMENT ON COLUMN rag_retrieval_log.trace_id IS '链路追踪ID';
+COMMENT ON COLUMN rag_retrieval_log.tenant_id IS '租户ID';
+COMMENT ON COLUMN rag_retrieval_log.owner_user_id IS '所属用户ID';
+COMMENT ON COLUMN rag_retrieval_log.session_id IS '会话ID';
+COMMENT ON COLUMN rag_retrieval_log.agent_id IS '智能体ID';
+COMMENT ON COLUMN rag_retrieval_log.source_service IS '来源服务（mapper 演进补列）';
+COMMENT ON COLUMN rag_retrieval_log.query_text IS '原始查询';
+COMMENT ON COLUMN rag_retrieval_log.rewrite_text IS '改写查询';
+COMMENT ON COLUMN rag_retrieval_log.retrieval_topk IS '检索TopK';
+COMMENT ON COLUMN rag_retrieval_log.retrieval_count IS '召回数量';
+COMMENT ON COLUMN rag_retrieval_log.source_docs IS '来源文档（JSON 文本，PO String→TEXT）';
+COMMENT ON COLUMN rag_retrieval_log.rerank_scores IS '重排序分数（JSON 文本，PO String→TEXT）';
+COMMENT ON COLUMN rag_retrieval_log.empty_retrieval IS '是否空召回：0-否，1-是（PO Integer→SMALLINT）';
+COMMENT ON COLUMN rag_retrieval_log.retrieval_stages IS '检索阶段（JSON 文本，PO String→TEXT）';
+COMMENT ON COLUMN rag_retrieval_log.retrieval_cost_ms IS '检索耗时(毫秒)（文档列 cost_time_ms 的 mapper 实名）';
+COMMENT ON COLUMN rag_retrieval_log.rag_strategy_version IS 'RAG策略版本（mapper 演进补列）';
+COMMENT ON COLUMN rag_retrieval_log.cost_time_ms IS '总耗时(毫秒)（文档保留列，mapper 现未写入）';
+COMMENT ON COLUMN rag_retrieval_log.create_time IS '创建时间';
+CREATE INDEX IF NOT EXISTS idx_rrl_trace_id ON rag_retrieval_log (trace_id);
+CREATE INDEX IF NOT EXISTS idx_rrl_session_id ON rag_retrieval_log (session_id);
+CREATE INDEX IF NOT EXISTS idx_rrl_create_time ON rag_retrieval_log (create_time);
+
+-- 3. 问答结果日志表（以 docs/02/09 L1095-1113 为准；mapper 补 2 列：
+--    source_service / model_version）
+CREATE TABLE IF NOT EXISTS chat_result_log (
+    id                 BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    trace_id           VARCHAR(64) NOT NULL,
+    tenant_id          VARCHAR(64) DEFAULT '',
+    owner_user_id      VARCHAR(64) DEFAULT '',
+    session_id         VARCHAR(64) DEFAULT '',
+    agent_id           VARCHAR(64) NOT NULL,
+    source_service     VARCHAR(32) NOT NULL,
+    question           TEXT,
+    answer             TEXT,
+    prompt_tokens      BIGINT      DEFAULT 0,
+    completion_tokens  BIGINT      DEFAULT 0,
+    total_cost_time_ms BIGINT      DEFAULT 0,
+    final_status       VARCHAR(32) NOT NULL,
+    model_version      VARCHAR(64) DEFAULT NULL,
+    create_time        TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+COMMENT ON TABLE chat_result_log IS '问答结果日志表';
+COMMENT ON COLUMN chat_result_log.trace_id IS '链路追踪ID';
+COMMENT ON COLUMN chat_result_log.tenant_id IS '租户ID';
+COMMENT ON COLUMN chat_result_log.owner_user_id IS '所属用户ID';
+COMMENT ON COLUMN chat_result_log.session_id IS '会话ID';
+COMMENT ON COLUMN chat_result_log.agent_id IS '智能体ID';
+COMMENT ON COLUMN chat_result_log.source_service IS '来源服务（mapper 演进补列）';
+COMMENT ON COLUMN chat_result_log.question IS '用户问题';
+COMMENT ON COLUMN chat_result_log.answer IS '模型回答';
+COMMENT ON COLUMN chat_result_log.prompt_tokens IS 'Prompt Token';
+COMMENT ON COLUMN chat_result_log.completion_tokens IS 'Completion Token';
+COMMENT ON COLUMN chat_result_log.total_cost_time_ms IS '总耗时(毫秒)';
+COMMENT ON COLUMN chat_result_log.final_status IS '最终状态';
+COMMENT ON COLUMN chat_result_log.model_version IS '模型版本（mapper 演进补列）';
+COMMENT ON COLUMN chat_result_log.create_time IS '创建时间';
+CREATE INDEX IF NOT EXISTS idx_crl_trace_id ON chat_result_log (trace_id);
+CREATE INDEX IF NOT EXISTS idx_crl_session_id ON chat_result_log (session_id);
+CREATE INDEX IF NOT EXISTS idx_crl_create_time ON chat_result_log (create_time);
+
+-- 4. 工具调用日志表（反推：tool_call_log_mapper.xml INSERT 列集 + ToolCallLogPO）
+CREATE TABLE IF NOT EXISTS tool_call_log (
+    id             BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    trace_id       VARCHAR(64)  NOT NULL,
+    span_id        VARCHAR(64)  DEFAULT NULL,
+    parent_span_id VARCHAR(64)  DEFAULT NULL,
+    tool_name      VARCHAR(128) NOT NULL,
+    tool_input     TEXT,
+    tool_output    TEXT,
+    status         VARCHAR(32)  NOT NULL,
+    cost_time_ms   INT          DEFAULT 0,
+    error_message  TEXT,
+    call_order     INT          DEFAULT 0,
+    create_time    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+COMMENT ON TABLE tool_call_log IS '工具调用日志表';
+COMMENT ON COLUMN tool_call_log.trace_id IS '链路追踪ID';
+COMMENT ON COLUMN tool_call_log.span_id IS '跨度ID';
+COMMENT ON COLUMN tool_call_log.parent_span_id IS '父跨度ID';
+COMMENT ON COLUMN tool_call_log.tool_name IS '工具名称';
+COMMENT ON COLUMN tool_call_log.tool_input IS '工具入参（JSON 文本，PO String→TEXT）';
+COMMENT ON COLUMN tool_call_log.tool_output IS '工具输出（JSON 文本，PO String→TEXT）';
+COMMENT ON COLUMN tool_call_log.status IS '调用状态（SUCCESS/FAILURE 等）';
+COMMENT ON COLUMN tool_call_log.cost_time_ms IS '耗时(毫秒)（PO Integer→INT）';
+COMMENT ON COLUMN tool_call_log.error_message IS '错误信息';
+COMMENT ON COLUMN tool_call_log.call_order IS '调用序号（同链路内的顺序）';
+COMMENT ON COLUMN tool_call_log.create_time IS '创建时间';
+CREATE INDEX IF NOT EXISTS idx_tcl_trace_id ON tool_call_log (trace_id);
+CREATE INDEX IF NOT EXISTS idx_tcl_create_time ON tool_call_log (create_time);
+
+-- 5. 记忆召回日志表（反推：memory_recall_log_mapper.xml INSERT 列集 + MemoryRecallLogPO）
+CREATE TABLE IF NOT EXISTS memory_recall_log (
+    id                    BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    trace_id              VARCHAR(64) NOT NULL,
+    query_text            TEXT,
+    session_memory_count  INT DEFAULT 0,
+    agent_memory_count    INT DEFAULT 0,
+    session_memory_scores TEXT,
+    agent_memory_scores   TEXT,
+    inject_content        TEXT,
+    cost_time_ms          INT DEFAULT 0,
+    create_time           TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+COMMENT ON TABLE memory_recall_log IS '记忆召回日志表';
+COMMENT ON COLUMN memory_recall_log.trace_id IS '链路追踪ID';
+COMMENT ON COLUMN memory_recall_log.query_text IS '原始查询';
+COMMENT ON COLUMN memory_recall_log.session_memory_count IS '会话记忆召回条数（PO Integer→INT）';
+COMMENT ON COLUMN memory_recall_log.agent_memory_count IS '智能体记忆召回条数（PO Integer→INT）';
+COMMENT ON COLUMN memory_recall_log.session_memory_scores IS '会话记忆评分列表（JSON 文本，PO String→TEXT）';
+COMMENT ON COLUMN memory_recall_log.agent_memory_scores IS '智能体记忆评分列表（JSON 文本，PO String→TEXT）';
+COMMENT ON COLUMN memory_recall_log.inject_content IS '注入上下文内容';
+COMMENT ON COLUMN memory_recall_log.cost_time_ms IS '耗时(毫秒)（PO Integer→INT）';
+COMMENT ON COLUMN memory_recall_log.create_time IS '创建时间';
+CREATE INDEX IF NOT EXISTS idx_mrl_trace_id ON memory_recall_log (trace_id);
+CREATE INDEX IF NOT EXISTS idx_mrl_create_time ON memory_recall_log (create_time);
+
+-- 6. 评测数据集表（反推：eval_dataset_mapper.xml INSERT/SELECT 列集 + EvalDatasetPO）
+CREATE TABLE IF NOT EXISTS eval_dataset (
+    id           BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    dataset_id   VARCHAR(64)  NOT NULL,
+    dataset_name VARCHAR(128) NOT NULL,
+    description  VARCHAR(512) DEFAULT NULL,
+    item_count   INT          DEFAULT 0,
+    items_json   TEXT,
+    create_time  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    update_time  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uk_dataset_id UNIQUE (dataset_id)
+);
+COMMENT ON TABLE eval_dataset IS '评测数据集表';
+COMMENT ON COLUMN eval_dataset.dataset_id IS '数据集业务ID（唯一）';
+COMMENT ON COLUMN eval_dataset.dataset_name IS '数据集名称';
+COMMENT ON COLUMN eval_dataset.description IS '数据集描述';
+COMMENT ON COLUMN eval_dataset.item_count IS '条目数（PO Integer→INT）';
+COMMENT ON COLUMN eval_dataset.items_json IS '数据集条目 JSON 数组（文本读写，PO String→TEXT）';
+COMMENT ON COLUMN eval_dataset.create_time IS '创建时间';
+COMMENT ON COLUMN eval_dataset.update_time IS '更新时间（应用层维护）';
+CREATE INDEX IF NOT EXISTS idx_eval_dataset_create_time ON eval_dataset (create_time);
+
+-- 7. 评测任务表（反推：eval_task_mapper.xml 全部 SQL 列集 + EvalTaskPO）
+CREATE TABLE IF NOT EXISTS eval_task (
+    id                   BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    task_id              VARCHAR(64)   NOT NULL,
+    task_name            VARCHAR(128)  NOT NULL,
+    eval_type            VARCHAR(32)   NOT NULL,
+    dataset_id           VARCHAR(64)   NOT NULL,
+    status               VARCHAR(32)   NOT NULL,
+    total_count          INT           DEFAULT 0,
+    completed_count      INT           DEFAULT 0,
+    model_version        VARCHAR(64)   DEFAULT NULL,
+    rag_strategy_version VARCHAR(64)   DEFAULT NULL,
+    avg_overall_score    DECIMAL(10,6) DEFAULT NULL,
+    create_time          TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    update_time          TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uk_task_id UNIQUE (task_id)
+);
+COMMENT ON TABLE eval_task IS '评测任务表';
+COMMENT ON COLUMN eval_task.task_id IS '任务业务ID（唯一）';
+COMMENT ON COLUMN eval_task.task_name IS '任务名称';
+COMMENT ON COLUMN eval_task.eval_type IS '评测类型（RAG/AGENT 等）';
+COMMENT ON COLUMN eval_task.dataset_id IS '关联数据集业务ID';
+COMMENT ON COLUMN eval_task.status IS '任务状态（PENDING/RUNNING/COMPLETED/FAILED）';
+COMMENT ON COLUMN eval_task.total_count IS '总条目数（PO Integer→INT）';
+COMMENT ON COLUMN eval_task.completed_count IS '已完成条目数（PO Integer→INT）';
+COMMENT ON COLUMN eval_task.model_version IS '模型版本';
+COMMENT ON COLUMN eval_task.rag_strategy_version IS 'RAG策略版本';
+COMMENT ON COLUMN eval_task.avg_overall_score IS '平均总分（PO Double→DECIMAL(10,6)）';
+COMMENT ON COLUMN eval_task.create_time IS '创建时间';
+COMMENT ON COLUMN eval_task.update_time IS '更新时间（应用层维护）';
+CREATE INDEX IF NOT EXISTS idx_eval_task_status_update ON eval_task (status, update_time);
+
+-- 8. 评测结果表（反推：eval_result_mapper.xml INSERT/batchInsert/SELECT 全部 31 业务列
+--    逐列核对 + EvalResultPO；分数列 PO 均 Double → DECIMAL(10,6)）
+CREATE TABLE IF NOT EXISTS eval_result (
+    id                   BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    task_id              VARCHAR(64)   NOT NULL,
+    trace_id             VARCHAR(64)   DEFAULT NULL,
+    query_text           TEXT,
+    standard_answer      TEXT,
+    actual_answer        TEXT,
+    recall_score         DECIMAL(10,6) DEFAULT NULL,
+    precision_score      DECIMAL(10,6) DEFAULT NULL,
+    f1_score             DECIMAL(10,6) DEFAULT NULL,
+    top3_hit_rate        DECIMAL(10,6) DEFAULT NULL,
+    mrr_score            DECIMAL(10,6) DEFAULT NULL,
+    ndcg_score           DECIMAL(10,6) DEFAULT NULL,
+    map_score            DECIMAL(10,6) DEFAULT NULL,
+    answer_similarity    DECIMAL(10,6) DEFAULT NULL,
+    context_precision    DECIMAL(10,6) DEFAULT NULL,
+    context_recall       DECIMAL(10,6) DEFAULT NULL,
+    context_relevance    DECIMAL(10,6) DEFAULT NULL,
+    faithfulness_score   DECIMAL(10,6) DEFAULT NULL,
+    relevance_score      DECIMAL(10,6) DEFAULT NULL,
+    hallucination_flag   SMALLINT      DEFAULT 0,
+    completeness_score   DECIMAL(10,6) DEFAULT NULL,
+    answer_correctness   DECIMAL(10,6) DEFAULT NULL,
+    overall_score        DECIMAL(10,6) DEFAULT NULL,
+    eval_detail          TEXT,
+    tool_selection_score DECIMAL(10,6) DEFAULT NULL,
+    tool_param_score     DECIMAL(10,6) DEFAULT NULL,
+    tool_call_score      DECIMAL(10,6) DEFAULT NULL,
+    intent_score         DECIMAL(10,6) DEFAULT NULL,
+    branch_score         DECIMAL(10,6) DEFAULT NULL,
+    reasoning_score      DECIMAL(10,6) DEFAULT NULL,
+    agent_decision_score DECIMAL(10,6) DEFAULT NULL,
+    create_time          TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+COMMENT ON TABLE eval_result IS '评测结果表';
+COMMENT ON COLUMN eval_result.task_id IS '评测任务业务ID（一任务多条明细）';
+COMMENT ON COLUMN eval_result.trace_id IS '链路追踪ID';
+COMMENT ON COLUMN eval_result.query_text IS '评测问题';
+COMMENT ON COLUMN eval_result.standard_answer IS '标准答案';
+COMMENT ON COLUMN eval_result.actual_answer IS '实际回答';
+COMMENT ON COLUMN eval_result.recall_score IS '召回率';
+COMMENT ON COLUMN eval_result.precision_score IS '精确率';
+COMMENT ON COLUMN eval_result.f1_score IS 'F1 分数';
+COMMENT ON COLUMN eval_result.top3_hit_rate IS 'Top3 命中率';
+COMMENT ON COLUMN eval_result.mrr_score IS 'MRR 分数';
+COMMENT ON COLUMN eval_result.ndcg_score IS 'NDCG 分数';
+COMMENT ON COLUMN eval_result.map_score IS 'MAP 分数';
+COMMENT ON COLUMN eval_result.answer_similarity IS '答案相似度';
+COMMENT ON COLUMN eval_result.context_precision IS '上下文精确率';
+COMMENT ON COLUMN eval_result.context_recall IS '上下文召回率';
+COMMENT ON COLUMN eval_result.context_relevance IS '上下文相关性';
+COMMENT ON COLUMN eval_result.faithfulness_score IS '忠实度';
+COMMENT ON COLUMN eval_result.relevance_score IS '相关性';
+COMMENT ON COLUMN eval_result.hallucination_flag IS '幻觉标记：0-无，1-有（PO Integer→SMALLINT）';
+COMMENT ON COLUMN eval_result.completeness_score IS '完整性';
+COMMENT ON COLUMN eval_result.answer_correctness IS '答案正确性';
+COMMENT ON COLUMN eval_result.overall_score IS '总分';
+COMMENT ON COLUMN eval_result.eval_detail IS '评测明细 JSON 文本（PO String→TEXT）';
+COMMENT ON COLUMN eval_result.tool_selection_score IS '工具选择分项（结构化落库）';
+COMMENT ON COLUMN eval_result.tool_param_score IS '工具参数分项（结构化落库）';
+COMMENT ON COLUMN eval_result.tool_call_score IS '工具调用分项（结构化落库）';
+COMMENT ON COLUMN eval_result.intent_score IS '意图识别分项（结构化落库）';
+COMMENT ON COLUMN eval_result.branch_score IS '分支决策分项（结构化落库）';
+COMMENT ON COLUMN eval_result.reasoning_score IS '推理过程分项（结构化落库）';
+COMMENT ON COLUMN eval_result.agent_decision_score IS 'Agent 决策总分项（结构化落库）';
+COMMENT ON COLUMN eval_result.create_time IS '创建时间';
+CREATE INDEX IF NOT EXISTS idx_eval_result_task_time ON eval_result (task_id, create_time);
