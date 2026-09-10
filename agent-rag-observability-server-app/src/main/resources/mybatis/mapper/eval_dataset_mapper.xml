@@ -14,7 +14,7 @@
 
     <select id="selectList" resultType="cn.chyuan.ai.observability.infrastructure.dao.po.EvalDatasetPO">
         SELECT id, dataset_id, dataset_name, description, item_count, create_time, update_time
-        FROM eval_dataset ORDER BY create_time DESC LIMIT #{offset}, #{size}
+        FROM eval_dataset ORDER BY create_time DESC LIMIT #{size} OFFSET #{offset}
     </select>
 
 </mapper>

@@ -52,7 +52,7 @@
                answer_correctness, overall_score, eval_detail, create_time,
                tool_selection_score, tool_param_score, tool_call_score,
                intent_score, branch_score, reasoning_score, agent_decision_score
-        FROM eval_result WHERE task_id = #{taskId} ORDER BY create_time DESC LIMIT #{offset}, #{size}
+        FROM eval_result WHERE task_id = #{taskId} ORDER BY create_time DESC LIMIT #{size} OFFSET #{offset}
     </select>
 
     <select id="countByTaskId" resultType="long">
