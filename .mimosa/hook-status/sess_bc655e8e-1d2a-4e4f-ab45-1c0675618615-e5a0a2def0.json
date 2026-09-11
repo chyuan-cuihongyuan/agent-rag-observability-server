@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "mimosa-hook-status/v1",
+  "recordedAt": "2026-09-11T20:27:23.070Z",
+  "sessionId": "sess_bc655e8e-1d2a-4e4f-ab45-1c0675618615",
+  "event": "PostToolUse",
+  "toolName": "Write",
+  "file": "agent-rag-observability-server-trigger/src/test/java/cn/chyuan/ai/observability/trigger/config/TraceIdFilterTest.java",
+  "outcome": "clear",
+  "coverage": "complete",
+  "findingCount": 0,
+  "durationMs": 4,
+  "hostState": "hook_complete",
+  "reportHint": ".mimosa/reports/"
+}

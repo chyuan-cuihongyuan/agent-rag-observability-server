@@ -44,7 +44,7 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>4.1.1</version>
+        <version>3.4.3</version>
     </parent>
     <repositories>
         <repository>
@@ -62,14 +62,18 @@
             <dependency>
                 <groupId>org.mybatis.spring.boot</groupId>
                 <artifactId>mybatis-spring-boot-starter</artifactId>
-                <version>4.1.0</version>
+                <version>3.0.4</version>
             </dependency>
-            <!-- MySQL：mysql-connector-j 交给 Boot 4.1 版本管理 -->
-            <!-- openai-java OkHttp 客户端（对齐 platform-bom 4.49.0，E08 收口时并入 BOM 消费） -->
+            <!-- MySQL -->
             <dependency>
-                <groupId>com.openai</groupId>
-                <artifactId>openai-java-client-okhttp</artifactId>
-                <version>4.49.0</version>
+                <groupId>mysql</groupId>
+                <artifactId>mysql-connector-java</artifactId>
+                <version>8.0.33</version>
+            </dependency>
+            <dependency>
+                <groupId>com.mysql</groupId>
+                <artifactId>mysql-connector-j</artifactId>
+                <version>8.0.33</version>
             </dependency>
             <!-- FastJSON -->
             <dependency>
@@ -82,12 +86,6 @@
                 <groupId>org.apache.commons</groupId>
                 <artifactId>commons-lang3</artifactId>
                 <version>3.9</version>
-            </dependency>
-            <!-- springdoc-openapi（Boot 3.4 适配线 2.8.x） -->
-            <dependency>
-                <groupId>org.springdoc</groupId>
-                <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
-                <version>2.8.9</version>
             </dependency>
             <!-- Guava -->
             <dependency>
@@ -135,7 +133,7 @@
             <dependency>
                 <groupId>org.springframework.ai</groupId>
                 <artifactId>spring-ai-bom</artifactId>
-                <version>2.0.1</version>
+                <version>1.1.0-M3</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
