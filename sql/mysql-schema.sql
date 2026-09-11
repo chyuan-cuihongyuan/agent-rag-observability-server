@@ -11,6 +11,7 @@
 -- 工单 0148（四期 U2）：新增第 14 表 model_pricing（模型计价），2026-09-11。
 -- 工单 0150（四期 U4）：新增第 15 表 trace_annotation（人工评分注解），2026-09-11。
 -- 工单 0154（四期 U8）：新增第 16 表 drift_event（检索分数漂移事件），2026-09-11。
+-- 工单 0170（四期 X1）：新增第 17 表 eval_pairwise_record（pairwise 对局记录），2026-09-11。
 -- 口径：
 --   (1) agent_decision_log / rag_retrieval_log / chat_result_log 三表以
 --       docs/02-agent-rag-observability-server/09-补充技术细节.md 第 1040-1128 行
@@ -407,3 +408,17 @@ CREATE TABLE IF NOT EXISTS drift_event (
     PRIMARY KEY (id),
     INDEX idx_drift_time (create_time)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='漂移事件表';
+
+-- 17. pairwise 对局记录表（工单 0170 X1：两任务同题 A/B 判定——X2 Elo 重算数据源）
+CREATE TABLE IF NOT EXISTS eval_pairwise_record (
+    id          BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    task_a      VARCHAR(64)  NOT NULL COMMENT '任务 A 业务ID',
+    task_b      VARCHAR(64)  NOT NULL COMMENT '任务 B 业务ID',
+    dataset_id  VARCHAR(64)  COMMENT '对齐所用数据集',
+    query       TEXT         COMMENT '查询原文（对齐键 queryText）',
+    outcome     VARCHAR(16)  NOT NULL COMMENT '判定：A_WIN / B_WIN / TIE',
+    pair_no     INT          NOT NULL DEFAULT 0 COMMENT '同对任务内的题序',
+    create_time DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '判定时间',
+    PRIMARY KEY (id),
+    INDEX idx_pair_tasks (task_a, task_b)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='pairwise 对局记录表';

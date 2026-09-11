@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- pairwise 对局记录表 mapper（工单 0170 X1）：双方言通用语句 -->
+<mapper namespace="cn.chyuan.ai.observability.infrastructure.dao.mapper.PairwiseRecordMapper">
+
+    <sql id="allColumns">
+        id, task_a, task_b, dataset_id, query, outcome, pair_no, create_time
+    </sql>
+
+    <insert id="insert" parameterType="cn.chyuan.ai.observability.infrastructure.dao.po.PairwiseRecordPO" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO eval_pairwise_record (task_a, task_b, dataset_id, query, outcome, pair_no, create_time)
+        VALUES (#{taskA}, #{taskB}, #{datasetId}, #{query}, #{outcome}, #{pairNo}, #{createTime})
+    </insert>
+
+    <select id="selectList" resultType="cn.chyuan.ai.observability.infrastructure.dao.po.PairwiseRecordPO">
+        SELECT <include refid="allColumns"/> FROM eval_pairwise_record
+        <where>
+            <if test="taskA != null and taskA != ''">AND task_a = #{taskA}</if>
+            <if test="taskB != null and taskB != ''">AND task_b = #{taskB}</if>
+        </where>
+        ORDER BY id ASC LIMIT #{limit}
+    </select>
+
+</mapper>

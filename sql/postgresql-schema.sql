@@ -11,6 +11,7 @@
 -- 工单 0148（四期 U2）：新增第 14 表 model_pricing（模型计价），2026-09-11。
 -- 工单 0150（四期 U4）：新增第 15 表 trace_annotation（人工评分注解），2026-09-11。
 -- 工单 0154（四期 U8）：新增第 16 表 drift_event（检索分数漂移事件），2026-09-11。
+-- 工单 0170（四期 X1）：新增第 17 表 eval_pairwise_record（pairwise 对局记录），2026-09-11。
 -- 口径：
 --   (1) agent_decision_log / rag_retrieval_log / chat_result_log 三表以
 --       docs/02-agent-rag-observability-server/09-补充技术细节.md 第 1040-1128 行
@@ -600,3 +601,18 @@ COMMENT ON TABLE drift_event IS '漂移事件表（检索分数分布漂移留�
 COMMENT ON COLUMN drift_event.metric IS '指标名（当前固定 rerank_mean）';
 COMMENT ON COLUMN drift_event.detail IS '上下文 JSON（样本数/空检索率/窗口）';
 CREATE INDEX IF NOT EXISTS idx_drift_time ON drift_event (create_time);
+
+-- 17. pairwise 对局记录表（工单 0170 X1：两任务同题 A/B 判定——X2 Elo 重算数据源）
+CREATE TABLE IF NOT EXISTS eval_pairwise_record (
+    id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    task_a      VARCHAR(64)  NOT NULL,
+    task_b      VARCHAR(64)  NOT NULL,
+    dataset_id  VARCHAR(64),
+    query       TEXT,
+    outcome     VARCHAR(16)  NOT NULL,
+    pair_no     INT          NOT NULL DEFAULT 0,
+    create_time TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+COMMENT ON TABLE eval_pairwise_record IS 'pairwise 对局记录表（两任务同题 A/B 判定）';
+COMMENT ON COLUMN eval_pairwise_record.outcome IS '判定：A_WIN / B_WIN / TIE';
+CREATE INDEX IF NOT EXISTS idx_pair_tasks ON eval_pairwise_record (task_a, task_b);
