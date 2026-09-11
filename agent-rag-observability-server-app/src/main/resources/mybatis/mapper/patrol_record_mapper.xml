@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- 巡检拨测记录表 mapper（工单 0137 S1）：双方言通用语句（分页 LIMIT #{size} OFFSET #{offset}） -->
+<mapper namespace="cn.chyuan.ai.observability.infrastructure.dao.mapper.PatrolRecordMapper">
+
+    <insert id="insert" parameterType="cn.chyuan.ai.observability.infrastructure.dao.po.PatrolRecordPO" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO patrol_record (round_id, task_ref, query, agent_id, status, score, duration_ms, error_summary, trace_id, create_time)
+        VALUES (#{roundId}, #{taskRef}, #{query}, #{agentId}, #{status}, #{score}, #{durationMs}, #{errorSummary}, #{traceId}, #{createTime})
+    </insert>
+
+    <select id="selectList" resultType="cn.chyuan.ai.observability.infrastructure.dao.po.PatrolRecordPO">
+        SELECT id, round_id, task_ref, query, agent_id, status, score, duration_ms, error_summary, trace_id, create_time
+        FROM patrol_record ORDER BY create_time DESC, id DESC LIMIT #{size} OFFSET #{offset}
+    </select>
+
+    <select id="selectLatest" resultType="cn.chyuan.ai.observability.infrastructure.dao.po.PatrolRecordPO">
+        SELECT id, round_id, task_ref, query, agent_id, status, score, duration_ms, error_summary, trace_id, create_time
+        FROM patrol_record ORDER BY create_time DESC, id DESC LIMIT 1
+    </select>
+
+    <select id="selectByRoundId" resultType="cn.chyuan.ai.observability.infrastructure.dao.po.PatrolRecordPO">
+        SELECT id, round_id, task_ref, query, agent_id, status, score, duration_ms, error_summary, trace_id, create_time
+        FROM patrol_record WHERE round_id = #{roundId} ORDER BY id ASC
+    </select>
+
+</mapper>

@@ -6,6 +6,7 @@
 -- 工单 0135/0136（三期 R3/R4）：eval_task 增列 trials/pass_threshold/pass_rate/score_std_dev/gate_id、
 --   eval_result 增列 trial_no 并入建表（既有库手工执行表 7/8 后注释中的 ALTER）；
 --   新增第 10/11 表 eval_gate、eval_gate_record，2026-09-10。
+-- 工单 0137（三期 S1）：新增第 12 表 patrol_record（巡检拨测记录），2026-09-11。
 -- 口径：
 --   (1) agent_decision_log / rag_retrieval_log / chat_result_log 三表以
 --       docs/02-agent-rag-observability-server/09-补充技术细节.md 第 1040-1128 行
@@ -314,3 +315,21 @@ CREATE TABLE IF NOT EXISTS eval_gate_record (
     INDEX idx_gate_time (gate_id, create_time),
     INDEX idx_task_id (task_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='评测门禁记录表';
+
+-- 12. 巡检拨测记录表（工单 0137 S1：在线评测三手段之巡检——定时回放拨测 + 三态判定 + 轻量分）
+CREATE TABLE IF NOT EXISTS patrol_record (
+    id            BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    round_id      VARCHAR(64)  NOT NULL COMMENT '轮次ID（同轮共享，/patrol/latest 取最近一轮聚合）',
+    task_ref      VARCHAR(128) NOT NULL COMMENT '种子任务标识（固定集为 q-N 序号；golden 池为 ds-N 序号）',
+    query         TEXT         NOT NULL COMMENT '拨测查询原文',
+    agent_id      VARCHAR(64)  COMMENT '目标智能体ID（空=在线回放 provider 默认）',
+    status        VARCHAR(16)  NOT NULL COMMENT '结果三态：SUCCESS-成功，FAIL-失败，TIMEOUT-超时',
+    score         DECIMAL(10,6) COMMENT '轻量质量分（0-1，TraceQualityCalculator 启发式非空维度均值；仅成功样本可评估时有值）',
+    duration_ms   BIGINT       NOT NULL DEFAULT 0 COMMENT '拨测耗时（毫秒；TIMEOUT 记录为超时预算值）',
+    error_summary VARCHAR(512) COMMENT '错误摘要（FAIL/TIMEOUT 原因，截断存储）',
+    trace_id      VARCHAR(64)  COMMENT '在线回放关联 traceId（可查链路详情）',
+    create_time   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间（追加写，无更新）',
+    PRIMARY KEY (id),
+    INDEX idx_round_id (round_id),
+    INDEX idx_patrol_time (create_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='巡检拨测记录表（追加写日志表，无唯一业务键：round_id 每轮新生成）';

@@ -6,6 +6,7 @@
 -- 工单 0135/0136（三期 R3/R4）：eval_task 增列 trials/pass_threshold/pass_rate/score_std_dev/gate_id、
 --   eval_result 增列 trial_no 并入建表（既有库手工执行表 7/8 后注释中的 ALTER）；
 --   新增第 10/11 表 eval_gate、eval_gate_record，2026-09-10。
+-- 工单 0137（三期 S1）：新增第 12 表 patrol_record（巡检拨测记录），2026-09-11。
 -- 口径：
 --   (1) agent_decision_log / rag_retrieval_log / chat_result_log 三表以
 --       docs/02-agent-rag-observability-server/09-补充技术细节.md 第 1040-1128 行
@@ -469,3 +470,31 @@ COMMENT ON COLUMN eval_gate_record.trigger_detail IS '触发明细 JSON 数组 [
 COMMENT ON COLUMN eval_gate_record.create_time IS '创建时间';
 CREATE INDEX IF NOT EXISTS idx_eval_gate_record_gate_time ON eval_gate_record (gate_id, create_time);
 CREATE INDEX IF NOT EXISTS idx_eval_gate_record_task ON eval_gate_record (task_id);
+
+-- 12. 巡检拨测记录表（工单 0137 S1：在线评测三手段之巡检——定时回放拨测 + 三态判定 + 轻量分）
+CREATE TABLE IF NOT EXISTS patrol_record (
+    id            BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    round_id      VARCHAR(64)  NOT NULL,
+    task_ref      VARCHAR(128) NOT NULL,
+    query         TEXT         NOT NULL,
+    agent_id      VARCHAR(64),
+    status        VARCHAR(16)  NOT NULL,
+    score         DECIMAL(10,6),
+    duration_ms   BIGINT       NOT NULL DEFAULT 0,
+    error_summary VARCHAR(512),
+    trace_id      VARCHAR(64),
+    create_time   TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+COMMENT ON TABLE patrol_record IS '巡检拨测记录表（追加写日志表，无唯一业务键：round_id 每轮新生成）';
+COMMENT ON COLUMN patrol_record.round_id IS '轮次ID（同轮共享，/patrol/latest 取最近一轮聚合）';
+COMMENT ON COLUMN patrol_record.task_ref IS '种子任务标识（固定集为 q-N 序号；golden 池为 ds-N 序号）';
+COMMENT ON COLUMN patrol_record.query IS '拨测查询原文';
+COMMENT ON COLUMN patrol_record.agent_id IS '目标智能体ID（空=在线回放 provider 默认）';
+COMMENT ON COLUMN patrol_record.status IS '结果三态：SUCCESS-成功，FAIL-失败，TIMEOUT-超时';
+COMMENT ON COLUMN patrol_record.score IS '轻量质量分（0-1，TraceQualityCalculator 启发式非空维度均值；仅成功样本可评估时有值）';
+COMMENT ON COLUMN patrol_record.duration_ms IS '拨测耗时（毫秒；TIMEOUT 记录为超时预算值）';
+COMMENT ON COLUMN patrol_record.error_summary IS '错误摘要（FAIL/TIMEOUT 原因，截断存储）';
+COMMENT ON COLUMN patrol_record.trace_id IS '在线回放关联 traceId（可查链路详情）';
+COMMENT ON COLUMN patrol_record.create_time IS '创建时间（追加写，无更新）';
+CREATE INDEX IF NOT EXISTS idx_patrol_round_id ON patrol_record (round_id);
+CREATE INDEX IF NOT EXISTS idx_patrol_time ON patrol_record (create_time);
