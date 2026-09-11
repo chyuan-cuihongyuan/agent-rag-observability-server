@@ -2,8 +2,12 @@ server:
   port: 8092
   servlet:
     context-path: /
+  # 优雅停机（D07）：等待在途请求完成再关闭（配合 MQ 消费摘流，E03 部分落地）
+  shutdown: graceful
 
 spring:
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
   datasource:
     url: jdbc:mysql://${MYSQL_HOST:<your-host>}:${MYSQL_PORT:3306}/agent_observability?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai
     username: ${MYSQL_USERNAME:<your-username>}
@@ -72,6 +76,11 @@ management:
     web:
       exposure:
         include: prometheus, health, info
+  # 存活/就绪探针（D07）：/actuator/health/liveness 与 /readiness，供 k8s/compose 探针
+  endpoint:
+    health:
+      probes:
+        enabled: true
   metrics:
     export:
       prometheus:
