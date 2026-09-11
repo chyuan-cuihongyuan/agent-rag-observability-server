@@ -23,4 +23,9 @@
         FROM patrol_record WHERE round_id = #{roundId} ORDER BY id ASC
     </select>
 
+    <select id="selectLatestFailures" resultType="cn.chyuan.ai.observability.infrastructure.dao.po.PatrolRecordPO">
+        SELECT id, round_id, task_ref, query, agent_id, status, score, duration_ms, error_summary, trace_id, create_time
+        FROM patrol_record WHERE status &lt;&gt; 'SUCCESS' ORDER BY create_time DESC, id DESC LIMIT #{limit}
+    </select>
+
 </mapper>

@@ -161,4 +161,31 @@ public class EsChatResultRepository implements IChatResultRepository {
             return 0;
         }
     }
+
+    /**
+     * 按终态状态集合查最近链路（工单 0138 S2：Case 挖掘来源②）。
+     * terms 查询多状态 + createTime 降序；ES 故障返回空列表（挖掘来源隔离由调用方兜底）。
+     */
+    @Override
+    public List<ChatResultEntity> queryByStatuses(List<String> statuses, int limit) {
+        if (statuses == null || statuses.isEmpty() || limit <= 0) {
+            return List.of();
+        }
+        try {
+            List<co.elastic.clients.elasticsearch._types.FieldValue> values = statuses.stream()
+                    .map(co.elastic.clients.elasticsearch._types.FieldValue::of)
+                    .toList();
+            SearchResponse<ChatResultEntity> response = esClient.search(s -> s
+                    .index(INDEX_PREFIX + "*")
+                    .query(q -> q.terms(t -> t.field("finalStatus").terms(tv -> tv.value(values))))
+                    .sort(sort -> sort.field(f -> f.field("createTime").order(SortOrder.Desc)))
+                    .size(Math.min(limit, 200)), ChatResultEntity.class);
+            return response.hits().hits().stream()
+                    .map(Hit::source)
+                    .toList();
+        } catch (Exception e) {
+            log.error("ES query by statuses error, statuses={}", statuses, e);
+            return List.of();
+        }
+    }
 }

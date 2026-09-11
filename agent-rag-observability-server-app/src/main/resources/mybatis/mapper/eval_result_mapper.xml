@@ -66,4 +66,19 @@
         SELECT COUNT(*) FROM eval_result WHERE task_id = #{taskId}
     </select>
 
+    <!-- 低分明细扫描（工单 0138 S2：Case 挖掘来源①）：overall_score 非空且低于阈值，双方言通用语句 -->
+    <select id="selectLowScore" resultType="cn.chyuan.ai.observability.infrastructure.dao.po.EvalResultPO">
+        SELECT id, task_id, trial_no, trace_id, query_text, standard_answer, actual_answer,
+               recall_score, precision_score, f1_score, top3_hit_rate,
+               mrr_score, ndcg_score, map_score, answer_similarity,
+               context_precision, context_recall, context_relevance,
+               faithfulness_score, relevance_score, hallucination_flag, completeness_score,
+               answer_correctness, overall_score, eval_detail, create_time,
+               tool_selection_score, tool_param_score, tool_call_score,
+               intent_score, branch_score, reasoning_score, agent_decision_score
+        FROM eval_result
+        WHERE overall_score IS NOT NULL AND overall_score &lt; #{maxOverallScore}
+        ORDER BY create_time DESC, id DESC LIMIT #{limit}
+    </select>
+
 </mapper>

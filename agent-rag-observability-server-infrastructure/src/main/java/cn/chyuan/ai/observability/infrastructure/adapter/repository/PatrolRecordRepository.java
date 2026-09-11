@@ -46,6 +46,13 @@ public class PatrolRecordRepository implements IPatrolRecordRepository {
                 .collect(Collectors.toList());
     }
 
+    @Override
+    public List<PatrolRecordEntity> queryLatestFailures(int limit) {
+        return patrolRecordMapper.selectLatestFailures(Math.min(Math.max(limit, 1), 200)).stream()
+                .map(this::toEntity)
+                .collect(Collectors.toList());
+    }
+
     private PatrolRecordPO toPo(PatrolRecordEntity e) {
         return PatrolRecordPO.builder()
                 .id(e.getId())

@@ -7,6 +7,7 @@
 --   eval_result 增列 trial_no 并入建表（既有库手工执行表 7/8 后注释中的 ALTER）；
 --   新增第 10/11 表 eval_gate、eval_gate_record，2026-09-10。
 -- 工单 0137（三期 S1）：新增第 12 表 patrol_record（巡检拨测记录），2026-09-11。
+-- 工单 0138（三期 S2）：新增第 13 表 eval_case_candidate（Case 挖掘候选），2026-09-11。
 -- 口径：
 --   (1) agent_decision_log / rag_retrieval_log / chat_result_log 三表以
 --       docs/02-agent-rag-observability-server/09-补充技术细节.md 第 1040-1128 行
@@ -498,3 +499,33 @@ COMMENT ON COLUMN patrol_record.trace_id IS '在线回放关联 traceId（可查
 COMMENT ON COLUMN patrol_record.create_time IS '创建时间（追加写，无更新）';
 CREATE INDEX IF NOT EXISTS idx_patrol_round_id ON patrol_record (round_id);
 CREATE INDEX IF NOT EXISTS idx_patrol_time ON patrol_record (create_time);
+
+-- 13. Case 候选表（工单 0138 S2：三来源挖掘统一入池——低分评测/失败链路/巡检失败；回填错题集）
+CREATE TABLE IF NOT EXISTS eval_case_candidate (
+    id                  BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    source              VARCHAR(24)  NOT NULL,
+    source_ref          VARCHAR(128) NOT NULL,
+    trace_id            VARCHAR(64),
+    query               TEXT,
+    answer_summary      TEXT,
+    hit_doc_count       INT,
+    tool_list           TEXT,
+    reason              VARCHAR(512),
+    status              VARCHAR(16)  NOT NULL DEFAULT 'PENDING',
+    promoted_dataset_id VARCHAR(64),
+    create_time         TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uk_case_source_ref UNIQUE (source, source_ref)
+);
+COMMENT ON TABLE eval_case_candidate IS 'Case 候选表（挖掘枢纽——线上问题自动沉淀为评测资产）';
+COMMENT ON COLUMN eval_case_candidate.source IS '来源：EVAL_LOW_SCORE-低分评测结果，TRACE_FAIL-失败超时链路，PATROL_FAIL-巡检失败';
+COMMENT ON COLUMN eval_case_candidate.source_ref IS '来源内唯一引用（评测=taskId:trialNo:traceId、链路=traceId、巡检=pid-记录ID 或 traceId），与 source 组成幂等键';
+COMMENT ON COLUMN eval_case_candidate.trace_id IS '关联 traceId（可关查链路详情，可空）';
+COMMENT ON COLUMN eval_case_candidate.query IS '查询原文（回填错题集时作为 prompt）';
+COMMENT ON COLUMN eval_case_candidate.answer_summary IS '答案摘要（截断存储的上下文快照）';
+COMMENT ON COLUMN eval_case_candidate.hit_doc_count IS '命中文档数（检索上下文快照）';
+COMMENT ON COLUMN eval_case_candidate.tool_list IS '工具调用列表 JSON 数组原文（工具上下文快照，可空）';
+COMMENT ON COLUMN eval_case_candidate.reason IS '入池原因（分数值/失败状态/巡检错误摘要）';
+COMMENT ON COLUMN eval_case_candidate.status IS '处置状态：PENDING-待处置，PROMOTED-已回填错题集，IGNORED-已忽略';
+COMMENT ON COLUMN eval_case_candidate.promoted_dataset_id IS '回填目标数据集 ID（PROMOTED 时有值）';
+COMMENT ON COLUMN eval_case_candidate.create_time IS '创建时间';
+CREATE INDEX IF NOT EXISTS idx_case_status ON eval_case_candidate (status, create_time);

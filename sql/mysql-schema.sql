@@ -7,6 +7,7 @@
 --   eval_result 增列 trial_no 并入建表（既有库手工执行表 7/8 后注释中的 ALTER）；
 --   新增第 10/11 表 eval_gate、eval_gate_record，2026-09-10。
 -- 工单 0137（三期 S1）：新增第 12 表 patrol_record（巡检拨测记录），2026-09-11。
+-- 工单 0138（三期 S2）：新增第 13 表 eval_case_candidate（Case 挖掘候选），2026-09-11。
 -- 口径：
 --   (1) agent_decision_log / rag_retrieval_log / chat_result_log 三表以
 --       docs/02-agent-rag-observability-server/09-补充技术细节.md 第 1040-1128 行
@@ -333,3 +334,22 @@ CREATE TABLE IF NOT EXISTS patrol_record (
     INDEX idx_round_id (round_id),
     INDEX idx_patrol_time (create_time)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='巡检拨测记录表（追加写日志表，无唯一业务键：round_id 每轮新生成）';
+
+-- 13. Case 候选表（工单 0138 S2：三来源挖掘统一入池——低分评测/失败链路/巡检失败；回填错题集）
+CREATE TABLE IF NOT EXISTS eval_case_candidate (
+    id                  BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    source              VARCHAR(24)  NOT NULL COMMENT '来源：EVAL_LOW_SCORE-低分评测结果，TRACE_FAIL-失败超时链路，PATROL_FAIL-巡检失败',
+    source_ref          VARCHAR(128) NOT NULL COMMENT '来源内唯一引用（评测=taskId:trialNo:traceId、链路=traceId、巡检=pid-记录ID 或 traceId），与 source 组成幂等键',
+    trace_id            VARCHAR(64)  COMMENT '关联 traceId（可关查链路详情，可空）',
+    query               TEXT         COMMENT '查询原文（回填错题集时作为 prompt）',
+    answer_summary      TEXT         COMMENT '答案摘要（截断存储的上下文快照）',
+    hit_doc_count       INT          COMMENT '命中文档数（检索上下文快照）',
+    tool_list           TEXT         COMMENT '工具调用列表 JSON 数组原文（工具上下文快照，可空）',
+    reason              VARCHAR(512) COMMENT '入池原因（分数值/失败状态/巡检错误摘要）',
+    status              VARCHAR(16)  NOT NULL DEFAULT 'PENDING' COMMENT '处置状态：PENDING-待处置，PROMOTED-已回填错题集，IGNORED-已忽略',
+    promoted_dataset_id VARCHAR(64)  COMMENT '回填目标数据集 ID（PROMOTED 时有值）',
+    create_time         DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_source_ref (source, source_ref),
+    INDEX idx_case_status (status, create_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Case 候选表（挖掘枢纽——线上问题自动沉淀为评测资产）';

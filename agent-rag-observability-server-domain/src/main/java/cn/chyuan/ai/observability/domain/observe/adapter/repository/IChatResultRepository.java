@@ -19,4 +19,12 @@ public interface IChatResultRepository {
     List<Map<String, Object>> statTrend(String startTime, String endTime, String interval);
     double avgCostTime(String startTime, String endTime);
     long countByStatus(String status, String startTime, String endTime);
+
+    /**
+     * 按终态状态集合查最近链路（工单 0138 S2：Case 挖掘来源②——失败/超时链路）。
+     *
+     * @param statuses 终态集合（如 FAIL/TIMEOUT），空集合返回空列表
+     * @param limit    返回条数上限（按 createTime 降序）
+     */
+    List<ChatResultEntity> queryByStatuses(List<String> statuses, int limit);
 }

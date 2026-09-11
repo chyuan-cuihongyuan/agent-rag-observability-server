@@ -19,4 +19,7 @@ public interface PatrolRecordMapper {
     PatrolRecordPO selectLatest();
 
     List<PatrolRecordPO> selectByRoundId(@Param("roundId") String roundId);
+
+    /** 最近失败记录（status <> SUCCESS；工单 0138 S2 挖掘来源③） */
+    List<PatrolRecordPO> selectLatestFailures(@Param("limit") int limit);
 }

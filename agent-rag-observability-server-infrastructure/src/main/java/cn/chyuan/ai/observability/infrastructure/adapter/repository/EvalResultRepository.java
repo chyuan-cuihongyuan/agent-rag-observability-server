@@ -38,6 +38,12 @@ public class EvalResultRepository implements IEvalResultRepository {
         return evalResultMapper.countByTaskId(taskId);
     }
 
+    @Override
+    public List<EvalResultEntity> queryLowScore(double maxOverallScore, int limit) {
+        return evalResultMapper.selectLowScore(maxOverallScore, Math.min(Math.max(limit, 1), 200))
+                .stream().map(this::toEntity).collect(Collectors.toList());
+    }
+
     private EvalResultPO toPO(EvalResultEntity e) {
         return EvalResultPO.builder().taskId(e.getTaskId()).trialNo(e.getTrialNo()).traceId(e.getTraceId()).queryText(e.getQueryText()).standardAnswer(e.getStandardAnswer()).actualAnswer(e.getActualAnswer()).recallScore(e.getRecallScore()).precisionScore(e.getPrecisionScore()).f1Score(e.getF1Score()).top3HitRate(e.getTop3HitRate()).mrrScore(e.getMrrScore()).ndcgScore(e.getNdcgScore()).mapScore(e.getMapScore()).answerSimilarity(e.getAnswerSimilarity()).contextPrecision(e.getContextPrecision()).contextRecall(e.getContextRecall()).contextRelevance(e.getContextRelevance()).faithfulnessScore(e.getFaithfulnessScore()).relevanceScore(e.getRelevanceScore()).hallucinationFlag(e.getHallucinationFlag()).completenessScore(e.getCompletenessScore()).answerCorrectness(e.getAnswerCorrectness()).overallScore(e.getOverallScore()).evalDetail(e.getEvalDetail()).createTime(e.getCreateTime()).toolSelectionScore(e.getToolSelectionScore()).toolParamScore(e.getToolParamScore()).toolCallScore(e.getToolCallScore()).intentScore(e.getIntentScore()).branchScore(e.getBranchScore()).reasoningScore(e.getReasoningScore()).agentDecisionScore(e.getAgentDecisionScore()).build();
     }

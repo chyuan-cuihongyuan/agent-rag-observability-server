@@ -19,4 +19,7 @@ public interface IPatrolRecordRepository {
 
     /** 指定轮次的全部记录（按 id 升序，重放本轮执行顺序） */
     List<PatrolRecordEntity> queryByRoundId(String roundId);
+
+    /** 最近失败记录（status <> SUCCESS，按 create_time 降序；工单 0138 S2 挖掘来源③） */
+    List<PatrolRecordEntity> queryLatestFailures(int limit);
 }

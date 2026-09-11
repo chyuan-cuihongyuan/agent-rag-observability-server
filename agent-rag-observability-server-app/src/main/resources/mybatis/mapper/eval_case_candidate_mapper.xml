@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- Case 候选表 mapper（工单 0138 S2）：双方言通用语句；幂等唯一键 (source, source_ref) 由 DDL 约束 + 应用层 exists 预检双层保障 -->
+<mapper namespace="cn.chyuan.ai.observability.infrastructure.dao.mapper.CaseCandidateMapper">
+
+    <sql id="allColumns">
+        id, source, source_ref, trace_id, query, answer_summary, hit_doc_count, tool_list, reason, status, promoted_dataset_id, create_time
+    </sql>
+
+    <insert id="insert" parameterType="cn.chyuan.ai.observability.infrastructure.dao.po.CaseCandidatePO" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO eval_case_candidate (source, source_ref, trace_id, query, answer_summary, hit_doc_count, tool_list, reason, status, promoted_dataset_id, create_time)
+        VALUES (#{source}, #{sourceRef}, #{traceId}, #{query}, #{answerSummary}, #{hitDocCount}, #{toolList}, #{reason}, #{status}, #{promotedDatasetId}, #{createTime})
+    </insert>
+
+    <select id="selectBySourceRef" resultType="cn.chyuan.ai.observability.infrastructure.dao.po.CaseCandidatePO">
+        SELECT <include refid="allColumns"/>
+        FROM eval_case_candidate WHERE source = #{source} AND source_ref = #{sourceRef}
+    </select>
+
+    <select id="selectList" resultType="cn.chyuan.ai.observability.infrastructure.dao.po.CaseCandidatePO">
+        SELECT <include refid="allColumns"/>
+        FROM eval_case_candidate
+        <where>
+            <if test="source != null">AND source = #{source}</if>
+            <if test="status != null">AND status = #{status}</if>
+        </where>
+        ORDER BY create_time DESC, id DESC LIMIT #{size} OFFSET #{offset}
+    </select>
+
+    <select id="selectByIds" resultType="cn.chyuan.ai.observability.infrastructure.dao.po.CaseCandidatePO">
+        SELECT <include refid="allColumns"/>
+        FROM eval_case_candidate
+        WHERE id IN
+        <foreach collection="ids" item="item" open="(" separator="," close=")">#{item}</foreach>
+        ORDER BY id ASC
+    </select>
+
+    <!-- 仅 PENDING 生效：已处置候选不被覆盖（幂等）；promotedDatasetId 为 null 时仅改状态 -->
+    <update id="updateStatus">
+        UPDATE eval_case_candidate
+        SET status = #{status},
+            promoted_dataset_id = <choose><when test="promotedDatasetId != null">#{promotedDatasetId}</when><otherwise>promoted_dataset_id</otherwise></choose>
+        WHERE status = 'PENDING' AND id IN
+        <foreach collection="ids" item="item" open="(" separator="," close=")">#{item}</foreach>
+    </update>
+
+</mapper>
