@@ -2,6 +2,8 @@ package cn.chyuan.ai.observability.infrastructure.adapter.llm;
 
 import cn.chyuan.ai.observability.domain.evaluate.adapter.port.ILlmJudgePort;
 import cn.chyuan.ai.observability.domain.evaluate.model.valobj.JudgeVerdict;
+import cn.chyuan.ai.observability.infrastructure.guard.GuardInterceptedException;
+import cn.chyuan.ai.observability.infrastructure.guard.JudgeGuard;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatModel;
@@ -24,6 +26,10 @@ public class LlmJudgeAdapter implements ILlmJudgePort {
 
     @Autowired(required = false)
     private ChatModel chatModel;
+
+    /** 借鉴 buzhou-guard 设计的注入防御样例；未启用（observability.eval.guard.enabled）时为 null，行为与原路径一致 */
+    @Autowired(required = false)
+    private JudgeGuard judgeGuard;
 
     @Value("${observability.eval.judge.enabled:true}")
     private boolean enabled;
@@ -260,7 +266,7 @@ public class LlmJudgeAdapter implements ILlmJudgePort {
      */
     private double evaluateFaithfulness(String answer, String context) {
         String prompt = String.format(FAITHFULNESS_PROMPT_TEMPLATE,
-                truncate(context, 3000), truncate(answer, 1000));
+                data(context, 3000), data(answer, 1000));
         return callLLMForScore(prompt, 0.5);
     }
 
@@ -269,7 +275,7 @@ public class LlmJudgeAdapter implements ILlmJudgePort {
      */
     private double evaluateRelevancy(String query, String answer) {
         String prompt = String.format(RELEVANCY_PROMPT_TEMPLATE,
-                truncate(query, 500), truncate(answer, 1000));
+                data(query, 500), data(answer, 1000));
         return callLLMForScore(prompt, 0.5);
     }
 
@@ -278,7 +284,7 @@ public class LlmJudgeAdapter implements ILlmJudgePort {
      */
     private double evaluateCompleteness(String standardAnswer, String actualAnswer) {
         String prompt = String.format(COMPLETENESS_PROMPT_TEMPLATE,
-                truncate(standardAnswer, 1000), truncate(actualAnswer, 1000));
+                data(standardAnswer, 1000), data(actualAnswer, 1000));
         return callLLMForScore(prompt, 0.5);
     }
 
@@ -287,7 +293,7 @@ public class LlmJudgeAdapter implements ILlmJudgePort {
      */
     private double evaluateSimilarity(String standardAnswer, String actualAnswer) {
         String prompt = String.format(SIMILARITY_PROMPT_TEMPLATE,
-                truncate(standardAnswer, 1000), truncate(actualAnswer, 1000));
+                data(standardAnswer, 1000), data(actualAnswer, 1000));
         return callLLMForScore(prompt, 0.5);
     }
 
@@ -303,10 +309,10 @@ public class LlmJudgeAdapter implements ILlmJudgePort {
         StringBuilder numbered = new StringBuilder();
         for (int i = 0; i < chunks.size(); i++) {
             numbered.append("[").append(i + 1).append("] ")
-                    .append(truncate(chunks.get(i), 500)).append("\n");
+                    .append(data(chunks.get(i), 500)).append("\n");
         }
         String prompt = String.format(CONTEXT_PRECISION_PROMPT_TEMPLATE,
-                truncate(query, 500), truncate(numbered.toString(), 3000));
+                data(query, 500), truncate(numbered.toString(), 3000));
         return callLLMForScore(prompt, 0.5);
     }
 
@@ -315,7 +321,7 @@ public class LlmJudgeAdapter implements ILlmJudgePort {
      */
     private double evaluateContextRecall(String standardAnswer, String context) {
         String prompt = String.format(CONTEXT_RECALL_PROMPT_TEMPLATE,
-                truncate(standardAnswer, 1000), truncate(context, 3000));
+                data(standardAnswer, 1000), data(context, 3000));
         return callLLMForScore(prompt, 0.5);
     }
 
@@ -324,7 +330,7 @@ public class LlmJudgeAdapter implements ILlmJudgePort {
      */
     private double evaluateContextRelevance(String query, String context) {
         String prompt = String.format(CONTEXT_RELEVANCE_PROMPT_TEMPLATE,
-                truncate(query, 500), truncate(context, 3000));
+                data(query, 500), data(context, 3000));
         return callLLMForScore(prompt, 0.5);
     }
 
@@ -333,7 +339,7 @@ public class LlmJudgeAdapter implements ILlmJudgePort {
      */
     private double evaluateAnswerCorrectness(String standardAnswer, String actualAnswer) {
         String prompt = String.format(ANSWER_CORRECTNESS_PROMPT_TEMPLATE,
-                truncate(standardAnswer, 1000), truncate(actualAnswer, 1000));
+                data(standardAnswer, 1000), data(actualAnswer, 1000));
         return callLLMForScore(prompt, 0.5);
     }
 
@@ -342,13 +348,13 @@ public class LlmJudgeAdapter implements ILlmJudgePort {
      */
     private HallucinationResult detectHallucination(String answer, String context) {
         String prompt = String.format(HALLUCINATION_PROMPT_TEMPLATE,
-                truncate(context, 3000), truncate(answer, 1000));
+                data(context, 3000), data(answer, 1000));
 
         try {
-            String result = chatModel.call(new Prompt(new UserMessage(prompt)))
+            String result = chatModel.call(new Prompt(new UserMessage(guardPrompt(prompt))))
                     .getResult().getOutput().getText();
 
-            double rate = extractHallucinationRate(result);
+            double rate = extractHallucinationRate(guardOutput(result));
             String detail = truncate(result, 200);
             return new HallucinationResult(rate, detail);
         } catch (Exception e) {
@@ -362,9 +368,13 @@ public class LlmJudgeAdapter implements ILlmJudgePort {
      */
     private double callLLMForScore(String prompt, double defaultScore) {
         try {
-            String result = chatModel.call(new Prompt(new UserMessage(prompt)))
+            String result = chatModel.call(new Prompt(new UserMessage(guardPrompt(prompt))))
                     .getResult().getOutput().getText();
-            return extractScore(result, defaultScore);
+            return extractScore(guardOutput(result), defaultScore);
+        } catch (GuardInterceptedException e) {
+            // on_fail=REFRAIN：输出被守卫拦截不外流，按默认分降级
+            log.warn("guard 拦截评测输出（密语泄漏），降级为默认分: {}", e.getMessage());
+            return defaultScore;
         } catch (Exception e) {
             log.warn("LLM评分调用失败: {}", e.getMessage());
             return defaultScore;
@@ -402,6 +412,35 @@ public class LlmJudgeAdapter implements ILlmJudgePort {
 
     private double round(double v) {
         return Math.round(v * 10000.0) / 10000.0;
+    }
+
+    /**
+     * 评测数据注入口：截断后经守卫 spotlighting 定界包裹（guard 未启用时退化为纯 truncate）
+     */
+    private String data(String text, int maxLength) {
+        String truncated = truncate(text, maxLength);
+        return judgeGuard != null ? judgeGuard.spotlight(truncated) : truncated;
+    }
+
+    /**
+     * 模型调用前守卫：注入安全密语指令（guard 未启用时原样返回）
+     */
+    private String guardPrompt(String prompt) {
+        return judgeGuard != null ? judgeGuard.beforeModel(prompt) : prompt;
+    }
+
+    /**
+     * 模型调用后守卫：密语泄漏检查，泄漏即抛 GuardInterceptedException 走降级（guard 未启用时原样返回）
+     */
+    private String guardOutput(String output) {
+        if (judgeGuard == null) {
+            return output;
+        }
+        JudgeGuard.GuardResult result = judgeGuard.afterModel(output);
+        if (!result.passed()) {
+            throw new GuardInterceptedException(result.value());
+        }
+        return result.value();
     }
 
     private String truncate(String text, int maxLength) {
