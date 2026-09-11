@@ -36,4 +36,7 @@ public interface IChatResultRepository {
      * @param limit     上限（钳制 ≤5000）
      */
     List<ChatResultEntity> queryCostSources(String startTime, int limit);
+
+    /** 导出取数（工单 0151 U5）：时间窗内全字段链路（answer/question 含），按 createTime 降序 */
+    List<ChatResultEntity> queryForExport(String startTime, String endTime, int limit);
 }

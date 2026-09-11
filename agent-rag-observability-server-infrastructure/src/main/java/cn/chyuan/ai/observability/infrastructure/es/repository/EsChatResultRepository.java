@@ -210,4 +210,25 @@ public class EsChatResultRepository implements IChatResultRepository {
             return List.of();
         }
     }
+
+    /** 导出取数（工单 0151 U5）：双时间窗 + 全字段 source，按 createTime 降序。 */
+    @Override
+    public List<ChatResultEntity> queryForExport(String startTime, String endTime, int limit) {
+        try {
+            SearchResponse<ChatResultEntity> response = esClient.search(s -> s
+                    .index(INDEX_PREFIX + "*")
+                    .query(q -> q.bool(b -> b
+                            .must(m -> m.range(r -> r.field("createTime")
+                                    .gte(co.elastic.clients.json.JsonData.of(startTime))
+                                    .lte(co.elastic.clients.json.JsonData.of(endTime))))))
+                    .sort(sort -> sort.field(f -> f.field("createTime").order(SortOrder.Desc)))
+                    .size(Math.min(Math.max(limit, 1), 10000)), ChatResultEntity.class);
+            return response.hits().hits().stream()
+                    .map(Hit::source)
+                    .toList();
+        } catch (Exception e) {
+            log.error("ES query for export error, {}..{}", startTime, endTime, e);
+            return List.of();
+        }
+    }
 }
