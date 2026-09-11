@@ -1,5 +1,7 @@
 # Agent RAG Observability Server
 
+[![build](https://github.com/chyuan-cuihongyuan/agent-rag-observability-server/actions/workflows/build.yml/badge.svg?branch=online-main)](https://github.com/chyuan-cuihongyuan/agent-rag-observability-server/actions/workflows/build.yml)
+
 ## 项目概述
 
 Agent RAG Observability Server 是面向 AI Agent 体系的**可观测性后端服务**，负责采集、查询、分析与 RAG / Agent 相关的全链路 Trace 数据，并提供在线质量评分与离线评测能力。它采用 DDD（领域驱动设计）架构，对接 MySQL、Elasticsearch、Redis、RocketMQ，基于 OpenTelemetry 与 Spring AI 构建，是整个 Agent 体系的「监控与评测中枢」。

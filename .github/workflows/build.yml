@@ -1,0 +1,41 @@
+name: build
+
+# SELFLOOP D02：observability 后端 CI（借鉴 spring-projects 官方工作流结构：
+# JDK 矩阵 + Maven 缓存 + 失败测试报告 artifact）
+on:
+  push:
+    branches: [online-main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: 构建 + 单元测试
+        run: mvn -B -ntp test
+
+      - name: 上传测试报告（失败时）
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports
+          path: '**/target/surefire-reports/**'
+          retention-days: 7
