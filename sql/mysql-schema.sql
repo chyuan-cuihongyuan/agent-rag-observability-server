@@ -12,6 +12,8 @@
 -- 工单 0150（四期 U4）：新增第 15 表 trace_annotation（人工评分注解），2026-09-11。
 -- 工单 0154（四期 U8）：新增第 16 表 drift_event（检索分数漂移事件），2026-09-11。
 -- 工单 0170（四期 X1）：新增第 17 表 eval_pairwise_record（pairwise 对局记录），2026-09-11。
+-- 工单 0176（四期 X7）：新增第 18 表 judge_cache（judge 判定缓存），2026-09-11。
+-- 工单 0179（四期 Y3）：新增第 19 表 alert_silence（告警静默窗口），2026-09-11。
 -- 口径：
 --   (1) agent_decision_log / rag_retrieval_log / chat_result_log 三表以
 --       docs/02-agent-rag-observability-server/09-补充技术细节.md 第 1040-1128 行
@@ -422,3 +424,28 @@ CREATE TABLE IF NOT EXISTS eval_pairwise_record (
     PRIMARY KEY (id),
     INDEX idx_pair_tasks (task_a, task_b)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='pairwise 对局记录表';
+
+-- 18. judge 判定缓存表（工单 0176 X7：等价输入复用判定结果，省 LLM 调用成本）
+CREATE TABLE IF NOT EXISTS judge_cache (
+    id          BIGINT        NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    cache_key   VARCHAR(64)   NOT NULL COMMENT '缓存键（判定 prompt 归一化 sha256）',
+    output      TEXT          NOT NULL COMMENT '判定原始输出',
+    rubric_id   VARCHAR(64)   COMMENT '来源 rubric（失效清除用，可空）',
+    hit_count   BIGINT        NOT NULL DEFAULT 0 COMMENT '命中次数',
+    update_time DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '写入/覆盖时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_judge_key (cache_key)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='judge 判定缓存表';
+
+-- 19. 告警静默表（工单 0179 Y3：静默键精确+前缀通配匹配，窗口惰性失效）
+CREATE TABLE IF NOT EXISTS alert_silence (
+    id          BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    silence_key VARCHAR(128) NOT NULL COMMENT '静默键（精确匹配；* 结尾为前缀通配）',
+    starts_at   DATETIME     NOT NULL COMMENT '生效时间',
+    ends_at     DATETIME     NOT NULL COMMENT '失效时间',
+    created_by  VARCHAR(64)  NOT NULL DEFAULT 'unknown' COMMENT '创建人（留痕）',
+    reason      VARCHAR(256) COMMENT '原因（维护窗/已知问题）',
+    create_time DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    PRIMARY KEY (id),
+    INDEX idx_silence_key (silence_key)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='告警静默表';

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- 告警静默表 mapper（工单 0179 Y3）：双方言通用语句 -->
+<mapper namespace="cn.chyuan.ai.observability.infrastructure.dao.mapper.AlertSilenceMapper">
+
+    <sql id="allColumns">
+        id, silence_key, starts_at, ends_at, created_by, reason, create_time
+    </sql>
+
+    <insert id="insert" parameterType="cn.chyuan.ai.observability.infrastructure.dao.po.AlertSilencePO" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO alert_silence (silence_key, starts_at, ends_at, created_by, reason, create_time)
+        VALUES (#{silenceKey}, #{startsAt}, #{endsAt}, #{createdBy}, #{reason}, #{createTime})
+    </insert>
+
+    <select id="selectAll" resultType="cn.chyuan.ai.observability.infrastructure.dao.po.AlertSilencePO">
+        SELECT <include refid="allColumns"/> FROM alert_silence ORDER BY id DESC
+    </select>
+
+    <delete id="deleteById">
+        DELETE FROM alert_silence WHERE id = #{id}
+    </delete>
+
+</mapper>

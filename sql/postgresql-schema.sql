@@ -12,6 +12,8 @@
 -- 工单 0150（四期 U4）：新增第 15 表 trace_annotation（人工评分注解），2026-09-11。
 -- 工单 0154（四期 U8）：新增第 16 表 drift_event（检索分数漂移事件），2026-09-11。
 -- 工单 0170（四期 X1）：新增第 17 表 eval_pairwise_record（pairwise 对局记录），2026-09-11。
+-- 工单 0176（四期 X7）：新增第 18 表 judge_cache（judge 判定缓存），2026-09-11。
+-- 工单 0179（四期 Y3）：新增第 19 表 alert_silence（告警静默窗口），2026-09-11。
 -- 口径：
 --   (1) agent_decision_log / rag_retrieval_log / chat_result_log 三表以
 --       docs/02-agent-rag-observability-server/09-补充技术细节.md 第 1040-1128 行
@@ -616,3 +618,31 @@ CREATE TABLE IF NOT EXISTS eval_pairwise_record (
 COMMENT ON TABLE eval_pairwise_record IS 'pairwise 对局记录表（两任务同题 A/B 判定）';
 COMMENT ON COLUMN eval_pairwise_record.outcome IS '判定：A_WIN / B_WIN / TIE';
 CREATE INDEX IF NOT EXISTS idx_pair_tasks ON eval_pairwise_record (task_a, task_b);
+
+-- 18. judge 判定缓存表（工单 0176 X7：等价输入复用判定结果，省 LLM 调用成本）
+CREATE TABLE IF NOT EXISTS judge_cache (
+    id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    cache_key   VARCHAR(64)   NOT NULL,
+    output      TEXT          NOT NULL,
+    rubric_id   VARCHAR(64),
+    hit_count   BIGINT        NOT NULL DEFAULT 0,
+    update_time TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uk_judge_key UNIQUE (cache_key)
+);
+COMMENT ON TABLE judge_cache IS 'judge 判定缓存表（等价输入复用判定结果）';
+COMMENT ON COLUMN judge_cache.cache_key IS '缓存键（判定 prompt 归一化 sha256）';
+COMMENT ON COLUMN judge_cache.hit_count IS '命中次数';
+
+-- 19. 告警静默表（工单 0179 Y3）
+CREATE TABLE IF NOT EXISTS alert_silence (
+    id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    silence_key VARCHAR(128) NOT NULL,
+    starts_at   TIMESTAMP    NOT NULL,
+    ends_at     TIMESTAMP    NOT NULL,
+    created_by  VARCHAR(64)  NOT NULL DEFAULT 'unknown',
+    reason      VARCHAR(256),
+    create_time TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+COMMENT ON TABLE alert_silence IS '告警静默表（精确+前缀通配匹配，窗口惰性失效）';
+COMMENT ON COLUMN alert_silence.silence_key IS '静默键（精确匹配；* 结尾为前缀通配）';
+CREATE INDEX IF NOT EXISTS idx_silence_key ON alert_silence (silence_key);

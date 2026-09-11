@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- judge 判定缓存表 mapper（工单 0176 X7）：upsert 同 id 按 databaseId 成对分叉（MySQL ON DUPLICATE KEY / PG ON CONFLICT） -->
+<mapper namespace="cn.chyuan.ai.observability.infrastructure.dao.mapper.JudgeCacheMapper">
+
+    <insert id="upsert" parameterType="cn.chyuan.ai.observability.infrastructure.dao.po.JudgeCachePO" databaseId="mysql">
+        INSERT INTO judge_cache (cache_key, output, rubric_id, hit_count, update_time)
+        VALUES (#{cacheKey}, #{output}, #{rubricId}, 0, #{updateTime})
+        ON DUPLICATE KEY UPDATE
+            output = VALUES(output),
+            hit_count = 0,
+            update_time = VALUES(update_time)
+    </insert>
+
+    <insert id="upsert" parameterType="cn.chyuan.ai.observability.infrastructure.dao.po.JudgeCachePO" databaseId="postgresql">
+        INSERT INTO judge_cache (cache_key, output, rubric_id, hit_count, update_time)
+        VALUES (#{cacheKey}, #{output}, #{rubricId}, 0, #{updateTime})
+        ON CONFLICT (cache_key) DO UPDATE
+        SET output = EXCLUDED.output,
+            hit_count = 0,
+            update_time = EXCLUDED.update_time
+    </insert>
+
+    <select id="selectByKey" resultType="cn.chyuan.ai.observability.infrastructure.dao.po.JudgeCachePO">
+        SELECT id, cache_key, output, rubric_id, hit_count, update_time
+        FROM judge_cache WHERE cache_key = #{cacheKey}
+    </select>
+
+    <update id="incrementHit">
+        UPDATE judge_cache SET hit_count = hit_count + 1 WHERE cache_key = #{cacheKey}
+    </update>
+
+    <delete id="clearByRubric">
+        DELETE FROM judge_cache WHERE rubric_id = #{rubricId}
+    </delete>
+
+</mapper>
