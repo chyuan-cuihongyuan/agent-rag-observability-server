@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.Scheduled;
+import jakarta.annotation.Resource;
 import org.springframework.stereotype.Component;
 
 import java.util.Arrays;
@@ -29,10 +30,14 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * </ul>
  */
 @Slf4j
+
 @Component
 @EnableScheduling
 @ConditionalOnProperty(name = "patrol.enabled", havingValue = "true")
 public class PatrolScheduler {
+
+    @Resource
+    private cn.chyuan.ai.observability.domain.scheduler.SchedulerRunRegistry schedulerRegistry;
 
     private final PatrolProbeService patrolProbeService;
 
@@ -52,7 +57,8 @@ public class PatrolScheduler {
     /** 防重入：上一轮未结束时跳过本轮调度 */
     private final AtomicBoolean running = new AtomicBoolean(false);
 
-    public PatrolScheduler(PatrolProbeService patrolProbeService) {
+    public PatrolScheduler(
+            PatrolProbeService patrolProbeService) {
         this.patrolProbeService = patrolProbeService;
     }
 
@@ -68,6 +74,7 @@ public class PatrolScheduler {
             // 轮次级兜底：调度异常不向上抛（避免影响调度器线程健康）
             log.error("巡检轮次执行异常", e);
         } finally {
+            schedulerRegistry.report("patrol", true, null);
             running.set(false);
         }
     }

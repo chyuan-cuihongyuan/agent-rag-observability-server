@@ -7,6 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
+import jakarta.annotation.Resource;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -26,9 +27,13 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * </ul>
  */
 @Slf4j
+
 @Component
 @ConditionalOnProperty(name = "mining.auto-enabled", havingValue = "true")
 public class CaseMiningScheduler {
+
+    @Resource
+    private cn.chyuan.ai.observability.domain.scheduler.SchedulerRunRegistry schedulerRegistry;
 
     private final CaseMiningService caseMiningService;
     private final CaseCandidateQueryService candidateQueryService;
@@ -45,7 +50,8 @@ public class CaseMiningScheduler {
     /** 防重入：上一轮未结束时跳过本轮调度 */
     private final AtomicBoolean running = new AtomicBoolean(false);
 
-    public CaseMiningScheduler(CaseMiningService caseMiningService,
+    public CaseMiningScheduler(
+            CaseMiningService caseMiningService,
                                CaseCandidateQueryService candidateQueryService) {
         this.caseMiningService = caseMiningService;
         this.candidateQueryService = candidateQueryService;
@@ -74,6 +80,7 @@ public class CaseMiningScheduler {
         } catch (Exception e) {
             log.error("Case 自动挖掘轮次执行异常", e);
         } finally {
+            schedulerRegistry.report("mining", true, null);
             running.set(false);
         }
     }
