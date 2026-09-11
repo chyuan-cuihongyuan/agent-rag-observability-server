@@ -189,7 +189,7 @@ public class EsChatResultRepository implements IChatResultRepository {
         }
     }
 
-    /** 成本聚合取数（工单 0148 U2）：时间窗 + 摘要字段 source 过滤，按 createTime 降序。 */
+    /** 成本/用量聚合取数（工单 0148 U2 / 0149 U3）：时间窗 + 摘要字段 source 过滤，按 createTime 降序。 */
     @Override
     public List<ChatResultEntity> queryCostSources(String startTime, int limit) {
         try {
@@ -198,7 +198,8 @@ public class EsChatResultRepository implements IChatResultRepository {
                     .query(q -> q.range(r -> r.field("createTime")
                             .gte(co.elastic.clients.json.JsonData.of(startTime))))
                     .source(src -> src.filter(f -> f.includes(
-                            "createTime", "agentId", "modelVersion", "promptTokens", "completionTokens", "finalStatus")))
+                            "createTime", "agentId", "modelVersion", "promptTokens", "completionTokens",
+                            "finalStatus", "ownerUserId", "tenantId", "totalCostTimeMs")))
                     .sort(sort -> sort.field(f -> f.field("createTime").order(SortOrder.Desc)))
                     .size(Math.min(Math.max(limit, 1), 5000)), ChatResultEntity.class);
             return response.hits().hits().stream()
