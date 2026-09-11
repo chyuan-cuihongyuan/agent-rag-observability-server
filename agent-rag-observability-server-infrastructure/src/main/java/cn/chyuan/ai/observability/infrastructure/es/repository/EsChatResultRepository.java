@@ -199,7 +199,7 @@ public class EsChatResultRepository implements IChatResultRepository {
                             .gte(co.elastic.clients.json.JsonData.of(startTime))))
                     .source(src -> src.filter(f -> f.includes(
                             "createTime", "agentId", "modelVersion", "promptTokens", "completionTokens",
-                            "finalStatus", "ownerUserId", "tenantId", "totalCostTimeMs")))
+                            "finalStatus", "ownerUserId", "tenantId", "totalCostTimeMs", "sessionId", "traceId")))
                     .sort(sort -> sort.field(f -> f.field("createTime").order(SortOrder.Desc)))
                     .size(Math.min(Math.max(limit, 1), 5000)), ChatResultEntity.class);
             return response.hits().hits().stream()
