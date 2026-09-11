@@ -10,6 +10,7 @@
 -- 工单 0138（三期 S2）：新增第 13 表 eval_case_candidate（Case 挖掘候选），2026-09-11。
 -- 工单 0148（四期 U2）：新增第 14 表 model_pricing（模型计价），2026-09-11。
 -- 工单 0150（四期 U4）：新增第 15 表 trace_annotation（人工评分注解），2026-09-11。
+-- 工单 0154（四期 U8）：新增第 16 表 drift_event（检索分数漂移事件），2026-09-11。
 -- 口径：
 --   (1) agent_decision_log / rag_retrieval_log / chat_result_log 三表以
 --       docs/02-agent-rag-observability-server/09-补充技术细节.md 第 1040-1128 行
@@ -584,3 +585,18 @@ COMMENT ON COLUMN trace_annotation.note IS '判定依据备注';
 COMMENT ON COLUMN trace_annotation.operator IS '标注人（操作留痕）';
 COMMENT ON COLUMN trace_annotation.create_time IS '首次标注时间';
 COMMENT ON COLUMN trace_annotation.update_time IS '最近标注时间（重评即改判）';
+
+-- 16. 漂移事件表（工单 0154 U8：检索分数分布漂移留痕）
+CREATE TABLE IF NOT EXISTS drift_event (
+    id             BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    metric         VARCHAR(64)   NOT NULL,
+    current_value  DECIMAL(18,6),
+    previous_value DECIMAL(18,6),
+    threshold      DECIMAL(18,6),
+    detail         TEXT,
+    create_time    TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+COMMENT ON TABLE drift_event IS '漂移事件表（检索分数分布漂移留痕：本周 vs 上周）';
+COMMENT ON COLUMN drift_event.metric IS '指标名（当前固定 rerank_mean）';
+COMMENT ON COLUMN drift_event.detail IS '上下文 JSON（样本数/空检索率/窗口）';
+CREATE INDEX IF NOT EXISTS idx_drift_time ON drift_event (create_time);

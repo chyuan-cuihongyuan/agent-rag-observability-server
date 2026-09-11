@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- 漂移事件表 mapper（工单 0154 U8）：双方言通用语句 -->
+<mapper namespace="cn.chyuan.ai.observability.infrastructure.dao.mapper.DriftEventMapper">
+
+    <insert id="insert" parameterType="cn.chyuan.ai.observability.infrastructure.dao.po.DriftEventPO" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO drift_event (metric, current_value, previous_value, threshold, detail, create_time)
+        VALUES (#{metric}, #{currentValue}, #{previousValue}, #{threshold}, #{detail}, #{createTime})
+    </insert>
+
+    <select id="selectList" resultType="cn.chyuan.ai.observability.infrastructure.dao.po.DriftEventPO">
+        SELECT id, metric, current_value, previous_value, threshold, detail, create_time
+        FROM drift_event ORDER BY create_time DESC, id DESC LIMIT #{size} OFFSET #{offset}
+    </select>
+
+</mapper>

@@ -64,6 +64,29 @@ public class EsRagRetrievalRepository implements IRagRetrievalRepository {
         }
     }
 
+    /** 漂移检测取数（工单 0154 U8）：双时间窗 + 摘要字段，按 createTime 降序。 */
+    @Override
+    public java.util.List<RagRetrievalEntity> queryForDrift(String startTime, String endTime, int limit) {
+        try {
+            SearchResponse<RagRetrievalEntity> response = esClient.search(s -> s
+                    .index(INDEX_PREFIX + "*")
+                    .query(q -> q.bool(b -> b
+                            .must(m -> m.range(r -> r.field("createTime")
+                                    .gte(co.elastic.clients.json.JsonData.of(startTime))
+                                    .lte(co.elastic.clients.json.JsonData.of(endTime))))))
+                    .source(src -> src.filter(f -> f.includes("createTime", "rerankScores", "emptyRetrieval")))
+                    .sort(sort -> sort.field(f -> f.field("createTime")
+                            .order(co.elastic.clients.elasticsearch._types.SortOrder.Desc)))
+                    .size(Math.min(Math.max(limit, 1), 5000)), RagRetrievalEntity.class);
+            return response.hits().hits().stream()
+                    .map(co.elastic.clients.elasticsearch.core.search.Hit::source)
+                    .toList();
+        } catch (Exception e) {
+            log.error("ES query for drift error, {}..{}", startTime, endTime, e);
+            return java.util.List.of();
+        }
+    }
+
     @Override
     public List<Map<String, Object>> statEmptyRetrievalRate(String startTime, String endTime) {
         try {
