@@ -1,6 +1,7 @@
 package cn.chyuan.ai.observability.domain.observe.adapter.repository;
 
 import cn.chyuan.ai.observability.domain.observe.model.entity.AgentDecisionEntity;
+import cn.chyuan.ai.observability.domain.observe.model.valobj.SessionSummary;
 
 import java.util.List;
 import java.util.Map;
@@ -15,4 +16,7 @@ public interface IAgentDecisionRepository {
     List<Map<String, Object>> statByBranchType(String startTime, String endTime);
     List<Map<String, Object>> statByToolUsage(String startTime, String endTime);
     List<Map<String, Object>> statErrorRanking(String startTime, String endTime);
+
+    /** 近期会话列表（sessionId 去重 + 末次时间降序；工单 0147 U1 会话聚合视图） */
+    List<SessionSummary> queryRecentSessions(int limit);
 }

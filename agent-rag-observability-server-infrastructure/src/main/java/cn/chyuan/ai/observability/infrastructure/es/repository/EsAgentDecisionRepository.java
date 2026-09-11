@@ -265,4 +265,47 @@ public class EsAgentDecisionRepository implements IAgentDecisionRepository {
             return Collections.emptyList();
         }
     }
+
+    /**
+     * 近期会话列表（工单 0147 U1）— 拉最近一批决策记录（按 createTime 降序），
+     * 应用侧按 sessionId 去重（首次出现即该会话最近一轮），保持末次活动降序；
+     * 与 statByToolUsage 同风格：ES 聚合 DSL 复杂度收敛到应用层。ES 故障返回空列表。
+     */
+    @Override
+    public List<cn.chyuan.ai.observability.domain.observe.model.valobj.SessionSummary> queryRecentSessions(int limit) {
+        try {
+            SearchResponse<Map> response = esClient.search(s -> s
+                    .index(INDEX_PREFIX + "*")
+                    .size(MAX_AGGREGATION_SIZE)
+                    .source(src -> src.filter(f -> f.includes("sessionId", "createTime")))
+                    .sort(so -> so.field(f -> f.field("createTime")
+                            .order(co.elastic.clients.elasticsearch._types.SortOrder.Desc))),
+                    Map.class);
+            Map<String, cn.chyuan.ai.observability.domain.observe.model.valobj.SessionSummary> seen =
+                    new LinkedHashMap<>();
+            for (Hit<Map> hit : response.hits().hits()) {
+                Map source = hit.source();
+                if (source == null) {
+                    continue;
+                }
+                Object sessionId = source.get("sessionId");
+                if (sessionId == null || seen.containsKey(sessionId.toString())) {
+                    continue;
+                }
+                seen.put(sessionId.toString(),
+                        cn.chyuan.ai.observability.domain.observe.model.valobj.SessionSummary.builder()
+                                .sessionId(sessionId.toString())
+                                .traceCount(0) /* 轮次计数由 rollup 端点精确给出，列表页只保序 */
+                                .lastTime(source.get("createTime") == null ? null : source.get("createTime").toString())
+                                .build());
+                if (seen.size() >= Math.min(Math.max(limit, 1), 100)) {
+                    break;
+                }
+            }
+            return new ArrayList<>(seen.values());
+        } catch (Exception e) {
+            log.error("ES query recent sessions error", e);
+            return Collections.emptyList();
+        }
+    }
 }
