@@ -4,13 +4,34 @@
 <mapper namespace="cn.chyuan.ai.observability.infrastructure.dao.mapper.CaseCandidateMapper">
 
     <sql id="allColumns">
-        id, source, source_ref, trace_id, query, answer_summary, hit_doc_count, tool_list, reason, status, promoted_dataset_id, create_time
+        id, source, source_ref, trace_id, query, answer_summary, hit_doc_count, tool_list, reason, status, promoted_dataset_id, create_time,
+        attribution, attribution_note, attribution_by, attribution_at
     </sql>
 
     <insert id="insert" parameterType="cn.chyuan.ai.observability.infrastructure.dao.po.CaseCandidatePO" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO eval_case_candidate (source, source_ref, trace_id, query, answer_summary, hit_doc_count, tool_list, reason, status, promoted_dataset_id, create_time)
         VALUES (#{source}, #{sourceRef}, #{traceId}, #{query}, #{answerSummary}, #{hitDocCount}, #{toolList}, #{reason}, #{status}, #{promotedDatasetId}, #{createTime})
     </insert>
+
+    <!-- 归因标注留痕（工单 0139 S3）：by/at 服务端生成，整体覆盖式更新 -->
+    <update id="updateAttribution">
+        UPDATE eval_case_candidate
+        SET attribution = #{attribution}, attribution_note = #{note},
+            attribution_by = #{by}, attribution_at = #{at}
+        WHERE id = #{id}
+    </update>
+
+    <select id="selectAttributed" resultType="cn.chyuan.ai.observability.infrastructure.dao.po.CaseCandidatePO">
+        SELECT <include refid="allColumns"/>
+        FROM eval_case_candidate
+        <where>
+            attribution IS NOT NULL
+            <if test="startTime != null and startTime != ''">AND attribution_at &gt;= #{startTime}</if>
+            <if test="endTime != null and endTime != ''">AND attribution_at &lt;= #{endTime}</if>
+            <if test="source != null and source != ''">AND source = #{source}</if>
+        </where>
+        ORDER BY attribution_at DESC LIMIT #{limit}
+    </select>
 
     <select id="selectBySourceRef" resultType="cn.chyuan.ai.observability.infrastructure.dao.po.CaseCandidatePO">
         SELECT <include refid="allColumns"/>

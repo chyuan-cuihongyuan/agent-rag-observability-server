@@ -27,4 +27,9 @@ public class CaseCandidatePO implements Serializable {
     private String status;
     private String promotedDatasetId;
     private String createTime;
+    /** 归因四分层（工单 0139 S3）：PLANNING/TOOL/ENVIRONMENT/SKILL */
+    private String attribution;
+    private String attributionNote;
+    private String attributionBy;
+    private String attributionAt;
 }

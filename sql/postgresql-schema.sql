@@ -514,6 +514,15 @@ CREATE TABLE IF NOT EXISTS eval_case_candidate (
     status              VARCHAR(16)  NOT NULL DEFAULT 'PENDING',
     promoted_dataset_id VARCHAR(64),
     create_time         TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    -- 工单 0139 S3 归因四列（既有库手工执行：
+    --   ALTER TABLE eval_case_candidate ADD COLUMN attribution VARCHAR(24);
+    --   ALTER TABLE eval_case_candidate ADD COLUMN attribution_note VARCHAR(512);
+    --   ALTER TABLE eval_case_candidate ADD COLUMN attribution_by VARCHAR(64);
+    --   ALTER TABLE eval_case_candidate ADD COLUMN attribution_at TIMESTAMP;）
+    attribution         VARCHAR(24),
+    attribution_note    VARCHAR(512),
+    attribution_by      VARCHAR(64),
+    attribution_at      TIMESTAMP,
     CONSTRAINT uk_case_source_ref UNIQUE (source, source_ref)
 );
 COMMENT ON TABLE eval_case_candidate IS 'Case 候选表（挖掘枢纽——线上问题自动沉淀为评测资产）';
@@ -528,4 +537,9 @@ COMMENT ON COLUMN eval_case_candidate.reason IS '入池原因（分数值/失败
 COMMENT ON COLUMN eval_case_candidate.status IS '处置状态：PENDING-待处置，PROMOTED-已回填错题集，IGNORED-已忽略';
 COMMENT ON COLUMN eval_case_candidate.promoted_dataset_id IS '回填目标数据集 ID（PROMOTED 时有值）';
 COMMENT ON COLUMN eval_case_candidate.create_time IS '创建时间';
+COMMENT ON COLUMN eval_case_candidate.attribution IS '归因四分层：PLANNING-规划错，TOOL-工具错，ENVIRONMENT-环境错，SKILL-知识错（未标注 NULL）';
+COMMENT ON COLUMN eval_case_candidate.attribution_note IS '归因备注（判定依据）';
+COMMENT ON COLUMN eval_case_candidate.attribution_by IS '标注人（操作留痕）';
+COMMENT ON COLUMN eval_case_candidate.attribution_at IS '标注时间（操作留痕）';
 CREATE INDEX IF NOT EXISTS idx_case_status ON eval_case_candidate (status, create_time);
+CREATE INDEX IF NOT EXISTS idx_case_attribution ON eval_case_candidate (attribution, attribution_at);

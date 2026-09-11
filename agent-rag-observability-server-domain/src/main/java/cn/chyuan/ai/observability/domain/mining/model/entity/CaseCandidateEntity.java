@@ -1,5 +1,6 @@
 package cn.chyuan.ai.observability.domain.mining.model.entity;
 
+import cn.chyuan.ai.observability.domain.mining.model.valobj.CaseAttribution;
 import cn.chyuan.ai.observability.domain.mining.model.valobj.CaseSource;
 import cn.chyuan.ai.observability.domain.mining.model.valobj.CaseStatus;
 import lombok.AllArgsConstructor;
@@ -41,4 +42,14 @@ public class CaseCandidateEntity {
     /** 回填目标数据集（PROMOTED 时有值） */
     private String promotedDatasetId;
     private String createTime;
+
+    // ========== 新增：归因分层标注（工单 0139 S3） ==========
+    /** 归因四分层：PLANNING/TOOL/ENVIRONMENT/SKILL（未标注为 null） */
+    private CaseAttribution attribution;
+    /** 归因备注（判定依据，人工填写） */
+    private String attributionNote;
+    /** 标注人（操作留痕） */
+    private String attributionBy;
+    /** 标注时间（操作留痕） */
+    private String attributionAt;
 }

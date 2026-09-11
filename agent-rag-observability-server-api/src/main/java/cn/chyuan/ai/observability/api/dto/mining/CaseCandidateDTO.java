@@ -35,4 +35,24 @@ public class CaseCandidateDTO {
     /** 回填目标数据集 ID */
     private String promotedDatasetId;
     private String createTime;
+    /** 归因四分层（工单 0139 S3）：PLANNING/TOOL/ENVIRONMENT/SKILL，未标注 null */
+    private String attribution;
+    /** 归因备注 */
+    private String attributionNote;
+    /** 标注人 */
+    private String attributionBy;
+    /** 标注时间 */
+    private String attributionAt;
+
+    /** 归因标注请求体（PATCH /eval/cases/{id}/attribution） */
+    @Data
+    @Builder
+    @AllArgsConstructor
+    @NoArgsConstructor
+    public static class AttributionRequest {
+        /** 归因分层（必填） */
+        private String attribution;
+        /** 判定依据备注 */
+        private String note;
+    }
 }

@@ -2,6 +2,7 @@ package cn.chyuan.ai.observability.infrastructure.adapter.repository;
 
 import cn.chyuan.ai.observability.domain.mining.adapter.repository.ICaseCandidateRepository;
 import cn.chyuan.ai.observability.domain.mining.model.entity.CaseCandidateEntity;
+import cn.chyuan.ai.observability.domain.mining.model.valobj.CaseAttribution;
 import cn.chyuan.ai.observability.domain.mining.model.valobj.CaseSource;
 import cn.chyuan.ai.observability.domain.mining.model.valobj.CaseStatus;
 import cn.chyuan.ai.observability.infrastructure.dao.mapper.CaseCandidateMapper;
@@ -59,6 +60,18 @@ public class CaseCandidateRepository implements ICaseCandidateRepository {
         return caseCandidateMapper.updateStatus(ids, status.getCode(), promotedDatasetId);
     }
 
+    @Override
+    public boolean updateAttribution(long id, CaseAttribution attribution, String note, String by, String at) {
+        return caseCandidateMapper.updateAttribution(id, attribution.getCode(), note, by, at) > 0;
+    }
+
+    @Override
+    public List<CaseCandidateEntity> queryAttributed(String startTime, String endTime, CaseSource source, int limit) {
+        return caseCandidateMapper.selectAttributed(startTime, endTime,
+                        source == null ? null : source.getCode(), Math.min(Math.max(limit, 1), 5000))
+                .stream().map(this::toEntity).collect(Collectors.toList());
+    }
+
     private CaseCandidatePO toPo(CaseCandidateEntity e) {
         return CaseCandidatePO.builder()
                 .id(e.getId())
@@ -73,6 +86,10 @@ public class CaseCandidateRepository implements ICaseCandidateRepository {
                 .status(e.getStatus() == null ? null : e.getStatus().getCode())
                 .promotedDatasetId(e.getPromotedDatasetId())
                 .createTime(e.getCreateTime())
+                .attribution(e.getAttribution() == null ? null : e.getAttribution().getCode())
+                .attributionNote(e.getAttributionNote())
+                .attributionBy(e.getAttributionBy())
+                .attributionAt(e.getAttributionAt())
                 .build();
     }
 
@@ -93,6 +110,10 @@ public class CaseCandidateRepository implements ICaseCandidateRepository {
                 .status(CaseStatus.fromCode(po.getStatus()))
                 .promotedDatasetId(po.getPromotedDatasetId())
                 .createTime(po.getCreateTime())
+                .attribution(CaseAttribution.fromCode(po.getAttribution()))
+                .attributionNote(po.getAttributionNote())
+                .attributionBy(po.getAttributionBy())
+                .attributionAt(po.getAttributionAt())
                 .build();
     }
 }

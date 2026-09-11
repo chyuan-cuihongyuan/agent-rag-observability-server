@@ -24,4 +24,12 @@ public interface CaseCandidateMapper {
     /** 仅 PENDING 生效的批量处置（返回受影响行数） */
     int updateStatus(@Param("ids") List<Long> ids, @Param("status") String status,
                      @Param("promotedDatasetId") String promotedDatasetId);
+
+    /** 归因标注留痕（工单 0139 S3） */
+    int updateAttribution(@Param("id") long id, @Param("attribution") String attribution,
+                          @Param("note") String note, @Param("by") String by, @Param("at") String at);
+
+    /** 已标注候选统计取数（时间窗/来源可空过滤；工单 0139 S3） */
+    List<CaseCandidatePO> selectAttributed(@Param("startTime") String startTime, @Param("endTime") String endTime,
+                                           @Param("source") String source, @Param("limit") int limit);
 }

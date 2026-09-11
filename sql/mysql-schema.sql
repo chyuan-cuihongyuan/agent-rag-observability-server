@@ -349,7 +349,17 @@ CREATE TABLE IF NOT EXISTS eval_case_candidate (
     status              VARCHAR(16)  NOT NULL DEFAULT 'PENDING' COMMENT '处置状态：PENDING-待处置，PROMOTED-已回填错题集，IGNORED-已忽略',
     promoted_dataset_id VARCHAR(64)  COMMENT '回填目标数据集 ID（PROMOTED 时有值）',
     create_time         DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    -- 工单 0139 S3 归因四列（既有库手工执行：
+    --   ALTER TABLE eval_case_candidate ADD COLUMN attribution VARCHAR(24) NULL COMMENT '归因四分层：PLANNING/TOOL/ENVIRONMENT/SKILL';
+    --   ALTER TABLE eval_case_candidate ADD COLUMN attribution_note VARCHAR(512) NULL COMMENT '归因备注';
+    --   ALTER TABLE eval_case_candidate ADD COLUMN attribution_by VARCHAR(64) NULL COMMENT '标注人';
+    --   ALTER TABLE eval_case_candidate ADD COLUMN attribution_at DATETIME NULL COMMENT '标注时间';）
+    attribution         VARCHAR(24)  COMMENT '归因四分层：PLANNING-规划错，TOOL-工具错，ENVIRONMENT-环境错，SKILL-知识错（未标注 NULL）',
+    attribution_note    VARCHAR(512) COMMENT '归因备注（判定依据）',
+    attribution_by      VARCHAR(64)  COMMENT '标注人（操作留痕）',
+    attribution_at      DATETIME     COMMENT '标注时间（操作留痕）',
     PRIMARY KEY (id),
     UNIQUE KEY uk_source_ref (source, source_ref),
-    INDEX idx_case_status (status, create_time)
+    INDEX idx_case_status (status, create_time),
+    INDEX idx_case_attribution (attribution, attribution_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Case 候选表（挖掘枢纽——线上问题自动沉淀为评测资产）';

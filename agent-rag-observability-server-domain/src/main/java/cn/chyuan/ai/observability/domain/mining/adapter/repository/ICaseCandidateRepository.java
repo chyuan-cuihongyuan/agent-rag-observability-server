@@ -23,4 +23,11 @@ public interface ICaseCandidateRepository {
 
     /** 批量处置：仅 PENDING 生效（幂等，已处置的候选不被覆盖） */
     int updateStatus(List<Long> ids, CaseStatus status, String promotedDatasetId);
+
+    /** 归因标注留痕更新（工单 0139 S3）：按主键写 attribution/note/by/at 四列 */
+    boolean updateAttribution(long id, cn.chyuan.ai.observability.domain.mining.model.valobj.CaseAttribution attribution,
+                              String note, String by, String at);
+
+    /** 已标注候选统计（attribution IS NOT NULL；startTime/endTime/source 可空过滤；工单 0139 S3） */
+    List<CaseCandidateEntity> queryAttributed(String startTime, String endTime, CaseSource source, int limit);
 }

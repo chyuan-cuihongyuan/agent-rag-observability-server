@@ -3,7 +3,9 @@ package cn.chyuan.ai.observability.trigger.http;
 import cn.chyuan.ai.observability.api.dto.mining.CaseCandidateDTO;
 import cn.chyuan.ai.observability.api.dto.mining.CaseDispositionRequestDTO;
 import cn.chyuan.ai.observability.domain.mining.model.entity.CaseCandidateEntity;
+import cn.chyuan.ai.observability.domain.mining.model.valobj.CaseAttribution;
 import cn.chyuan.ai.observability.domain.mining.model.valobj.CaseSource;
+import cn.chyuan.ai.observability.domain.mining.service.CaseAttributionService;
 import cn.chyuan.ai.observability.domain.mining.service.CaseCandidateQueryService;
 import cn.chyuan.ai.observability.domain.mining.service.CaseMiningService;
 import cn.chyuan.ai.observability.types.response.Response;
@@ -40,11 +42,14 @@ public class CaseMiningController {
 
     private final CaseMiningService caseMiningService;
     private final CaseCandidateQueryService candidateQueryService;
+    private final CaseAttributionService caseAttributionService;
 
     public CaseMiningController(CaseMiningService caseMiningService,
-                                CaseCandidateQueryService candidateQueryService) {
+                                CaseCandidateQueryService candidateQueryService,
+                                CaseAttributionService caseAttributionService) {
         this.caseMiningService = caseMiningService;
         this.candidateQueryService = candidateQueryService;
+        this.caseAttributionService = caseAttributionService;
     }
 
     @GetMapping("/candidates")
@@ -112,6 +117,60 @@ public class CaseMiningController {
         return Response.success(Map.of("ignored", ignored));
     }
 
+    // ========== 归因分层标注（工单 0139 S3） ==========
+
+    /**
+     * 归因标注：PATCH /api/v1/eval/cases/{id}/attribution — 枚举校验 + by/at 留痕。
+     * 标注人从 X-Operator 头透传（登录态就绪前的轻量口径，缺省 unknown）。
+     */
+    @org.springframework.web.bind.annotation.PatchMapping("/{id}/attribution")
+    public Response<Map<String, Object>> attribute(@org.springframework.web.bind.annotation.PathVariable long id,
+                                                   @RequestBody(required = false) CaseCandidateDTO.AttributionRequest request,
+                                                   @org.springframework.web.bind.annotation.RequestHeader(value = "X-Operator", required = false) String operator) {
+        if (request == null || request.getAttribution() == null || request.getAttribution().isBlank()) {
+            return Response.fail(ResponseCode.ILLEGAL_PARAMETER, "attribution 不能为空"
+                    + "（合法值 PLANNING/TOOL/ENVIRONMENT/SKILL）");
+        }
+        try {
+            int updated = caseAttributionService.label(id, request.getAttribution(), request.getNote(), operator);
+            if (updated == 0) {
+                return Response.fail(ResponseCode.ILLEGAL_PARAMETER, "候选不存在: " + id);
+            }
+            return Response.success(Map.of("updated", updated));
+        } catch (IllegalArgumentException e) {
+            return Response.fail(ResponseCode.ILLEGAL_PARAMETER, e.getMessage());
+        }
+    }
+
+    /** 归因分布统计：GET /api/v1/eval/cases/attribution/stats?startTime=&endTime=&source= */
+    @GetMapping("/attribution/stats")
+    public Response<List<Map<String, Object>>> attributionStats(@RequestParam(required = false) String startTime,
+                                                                @RequestParam(required = false) String endTime,
+                                                                @RequestParam(required = false) String source) {
+        CaseSource sourceEnum = null;
+        if (source != null && !source.isBlank()) {
+            sourceEnum = CaseSource.fromCode(source.trim());
+            if (sourceEnum == null) {
+                return Response.fail(ResponseCode.ILLEGAL_PARAMETER, "非法来源: " + source);
+            }
+        }
+        List<CaseCandidateEntity> attributed = caseAttributionService.loadAttributed(
+                startTime == null || startTime.isBlank() ? null : startTime.trim(),
+                endTime == null || endTime.isBlank() ? null : endTime.trim(),
+                sourceEnum);
+        Map<CaseAttribution, CaseAttributionService.AttributionStat> stats =
+                caseAttributionService.summarize(attributed);
+        List<Map<String, Object>> data = new java.util.ArrayList<>();
+        for (Map.Entry<CaseAttribution, CaseAttributionService.AttributionStat> entry : stats.entrySet()) {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("attribution", entry.getKey().getCode());
+            row.put("count", entry.getValue().count);
+            row.put("ratio", entry.getValue().ratio);
+            data.add(row);
+        }
+        return Response.success(data);
+    }
+
     static CaseCandidateDTO toDto(CaseCandidateEntity e) {
         return CaseCandidateDTO.builder()
                 .id(e.getId())
@@ -126,6 +185,10 @@ public class CaseMiningController {
                 .status(e.getStatus() == null ? null : e.getStatus().getCode())
                 .promotedDatasetId(e.getPromotedDatasetId())
                 .createTime(e.getCreateTime())
+                .attribution(e.getAttribution() == null ? null : e.getAttribution().getCode())
+                .attributionNote(e.getAttributionNote())
+                .attributionBy(e.getAttributionBy())
+                .attributionAt(e.getAttributionAt())
                 .build();
     }
 }
