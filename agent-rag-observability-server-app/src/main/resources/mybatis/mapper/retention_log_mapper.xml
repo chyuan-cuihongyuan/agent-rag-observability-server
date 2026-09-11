@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- 日志保留清理 mapper（工单 0152 U6）：purgeBatch 同 id 按 databaseId 成对分叉；表名由服务层白名单传入 -->
+<mapper namespace="cn.chyuan.ai.observability.infrastructure.dao.mapper.RetentionMapper">
+
+    <delete id="purgeBatch" databaseId="mysql">
+        DELETE FROM ${table} WHERE create_time &lt; #{beforeTime} ORDER BY id LIMIT #{batchSize}
+    </delete>
+
+    <delete id="purgeBatch" databaseId="postgresql">
+        DELETE FROM ${table} WHERE id IN (
+            SELECT id FROM ${table} WHERE create_time &lt; #{beforeTime} LIMIT #{batchSize}
+        )
+    </delete>
+
+    <select id="countPurge" resultType="long">
+        SELECT COUNT(*) FROM ${table} WHERE create_time &lt; #{beforeTime}
+    </select>
+
+</mapper>
