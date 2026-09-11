@@ -23,6 +23,30 @@ mybatis:
   configuration:
     map-underscore-to-camel-case: true
 
+# springdoc-openapi（D06）：文档端点与分组
+springdoc:
+  api-docs:
+    enabled: true
+    path: /v3/api-docs
+  swagger-ui:
+    enabled: true
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: alpha
+  group-configs:
+    - group: collect
+      display-name: 采集上报（网关通道）
+      paths-to-match: /api/v1/collect/**
+    - group: query
+      display-name: Trace 查询
+      paths-to-match: /api/v1/query/**
+    - group: eval
+      display-name: 质量评测
+      paths-to-match: /api/v1/eval/**
+    - group: dashboard
+      display-name: 监控仪表盘
+      paths-to-match: /api/v1/dashboard/**,/api/v1/seed/**
+
 elasticsearch:
   host: ${ES_HOST:<your-host>}
   port: ${ES_PORT:9200}
