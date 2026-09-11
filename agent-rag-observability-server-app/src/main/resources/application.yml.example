@@ -80,6 +80,10 @@ management:
       application: agent-observability
 
 logging:
+  # 控制台/文件行含 traceId（D08：TraceIdFilter 与 MQ 消费端写入同一 MDC key）
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %5p [%thread] [%X{traceId:-}] %logger{40} : %m%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss.SSS} %5p [%thread] [%X{traceId:-}] %logger{40} : %m%n"
   level:
     root: info
     cn.chyuan.ai.observability: debug
