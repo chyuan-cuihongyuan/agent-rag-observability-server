@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- 死信记录表 mapper（工单 0180 Y4）：双方言通用语句 -->
+<mapper namespace="cn.chyuan.ai.observability.infrastructure.dao.mapper.DeadLetterMapper">
+
+    <sql id="allColumns">
+        id, topic_tag, payload, retry_count, last_error, status, create_time, update_time
+    </sql>
+
+    <insert id="insert" parameterType="cn.chyuan.ai.observability.infrastructure.dao.po.DeadLetterPO" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO dlq_record (topic_tag, payload, retry_count, last_error, status, create_time, update_time)
+        VALUES (#{topicTag}, #{payload}, #{retryCount}, #{lastError}, #{status}, #{createTime}, #{updateTime})
+    </insert>
+
+    <select id="selectList" resultType="cn.chyuan.ai.observability.infrastructure.dao.po.DeadLetterPO">
+        SELECT <include refid="allColumns"/> FROM dlq_record
+        <where>
+            <if test="status != null and status != ''">AND status = #{status}</if>
+        </where>
+        ORDER BY create_time DESC, id DESC LIMIT #{size} OFFSET #{offset}
+    </select>
+
+    <select id="selectById" resultType="cn.chyuan.ai.observability.infrastructure.dao.po.DeadLetterPO">
+        SELECT <include refid="allColumns"/> FROM dlq_record WHERE id = #{id}
+    </select>
+
+    <delete id="delete">
+        DELETE FROM dlq_record WHERE id = #{id}
+    </delete>
+
+    <update id="markRetryFailed">
+        UPDATE dlq_record SET retry_count = retry_count + 1, last_error = #{lastError}, update_time = NOW()
+        WHERE id = #{id}
+    </update>
+
+</mapper>

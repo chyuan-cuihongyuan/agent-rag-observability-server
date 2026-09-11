@@ -14,6 +14,7 @@
 -- 工单 0170（四期 X1）：新增第 17 表 eval_pairwise_record（pairwise 对局记录），2026-09-11。
 -- 工单 0176（四期 X7）：新增第 18 表 judge_cache（judge 判定缓存），2026-09-11。
 -- 工单 0179（四期 Y3）：新增第 19 表 alert_silence（告警静默窗口），2026-09-11。
+-- 工单 0180（四期 Y4）：新增第 20 表 dlq_record（死信记录），2026-09-11。
 -- 口径：
 --   (1) agent_decision_log / rag_retrieval_log / chat_result_log 三表以
 --       docs/02-agent-rag-observability-server/09-补充技术细节.md 第 1040-1128 行
@@ -449,3 +450,17 @@ CREATE TABLE IF NOT EXISTS alert_silence (
     PRIMARY KEY (id),
     INDEX idx_silence_key (silence_key)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='告警静默表';
+
+-- 20. 死信记录表（工单 0180 Y4：MQ 消费失败消息留痕与重放）
+CREATE TABLE IF NOT EXISTS dlq_record (
+    id          BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    topic_tag   VARCHAR(32)  NOT NULL COMMENT '消息标签（decision/retrieval/chat_result/tool_call/memory_recall）',
+    payload     MEDIUMTEXT   COMMENT '消息原文（截断 8KB）',
+    retry_count INT          NOT NULL DEFAULT 0 COMMENT '重放失败次数',
+    last_error  VARCHAR(512) COMMENT '最近一次失败原因',
+    status      VARCHAR(16)  NOT NULL DEFAULT 'PENDING' COMMENT '状态：PENDING-待重放，REPLAYED-已成功重放',
+    create_time DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '入死信时间',
+    update_time DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '更新时间（应用层维护）',
+    PRIMARY KEY (id),
+    INDEX idx_dlq_status (status, create_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='死信记录表';

@@ -14,6 +14,7 @@
 -- 工单 0170（四期 X1）：新增第 17 表 eval_pairwise_record（pairwise 对局记录），2026-09-11。
 -- 工单 0176（四期 X7）：新增第 18 表 judge_cache（judge 判定缓存），2026-09-11。
 -- 工单 0179（四期 Y3）：新增第 19 表 alert_silence（告警静默窗口），2026-09-11。
+-- 工单 0180（四期 Y4）：新增第 20 表 dlq_record（死信记录），2026-09-11。
 -- 口径：
 --   (1) agent_decision_log / rag_retrieval_log / chat_result_log 三表以
 --       docs/02-agent-rag-observability-server/09-补充技术细节.md 第 1040-1128 行
@@ -646,3 +647,20 @@ CREATE TABLE IF NOT EXISTS alert_silence (
 COMMENT ON TABLE alert_silence IS '告警静默表（精确+前缀通配匹配，窗口惰性失效）';
 COMMENT ON COLUMN alert_silence.silence_key IS '静默键（精确匹配；* 结尾为前缀通配）';
 CREATE INDEX IF NOT EXISTS idx_silence_key ON alert_silence (silence_key);
+
+-- 20. 死信记录表（工单 0180 Y4：MQ 消费失败消息留痕与重放）
+CREATE TABLE IF NOT EXISTS dlq_record (
+    id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    topic_tag   VARCHAR(32)  NOT NULL,
+    payload     TEXT,
+    retry_count INT          NOT NULL DEFAULT 0,
+    last_error  VARCHAR(512),
+    status      VARCHAR(16)  NOT NULL DEFAULT 'PENDING',
+    create_time TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    update_time TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+COMMENT ON TABLE dlq_record IS '死信记录表（MQ 消费失败留痕与重放）';
+COMMENT ON COLUMN dlq_record.topic_tag IS '消息标签（decision/retrieval/chat_result/tool_call/memory_recall）';
+COMMENT ON COLUMN dlq_record.payload IS '消息原文（截断 8KB）';
+COMMENT ON COLUMN dlq_record.status IS '状态：PENDING-待重放，REPLAYED-已成功重放';
+CREATE INDEX IF NOT EXISTS idx_dlq_status ON dlq_record (status, create_time);
