@@ -27,4 +27,13 @@ public interface IChatResultRepository {
      * @param limit    返回条数上限（按 createTime 降序）
      */
     List<ChatResultEntity> queryByStatuses(List<String> statuses, int limit);
+
+    /**
+     * 成本聚合取数（工单 0148 U2）— 时间窗内的链路摘要（createTime/agentId/modelVersion/tokens）。
+     * 读时派生口径：聚合服务按计价表即时算成本，不依赖落库 cost 列。
+     *
+     * @param startTime 起始时间（含），格式 yyyy-MM-dd HH:mm:ss
+     * @param limit     上限（钳制 ≤5000）
+     */
+    List<ChatResultEntity> queryCostSources(String startTime, int limit);
 }

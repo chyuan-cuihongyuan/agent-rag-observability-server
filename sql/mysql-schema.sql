@@ -8,6 +8,7 @@
 --   新增第 10/11 表 eval_gate、eval_gate_record，2026-09-10。
 -- 工单 0137（三期 S1）：新增第 12 表 patrol_record（巡检拨测记录），2026-09-11。
 -- 工单 0138（三期 S2）：新增第 13 表 eval_case_candidate（Case 挖掘候选），2026-09-11。
+-- 工单 0148（四期 U2）：新增第 14 表 model_pricing（模型计价），2026-09-11。
 -- 口径：
 --   (1) agent_decision_log / rag_retrieval_log / chat_result_log 三表以
 --       docs/02-agent-rag-observability-server/09-补充技术细节.md 第 1040-1128 行
@@ -363,3 +364,18 @@ CREATE TABLE IF NOT EXISTS eval_case_candidate (
     INDEX idx_case_status (status, create_time),
     INDEX idx_case_attribution (attribution, attribution_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Case 候选表（挖掘枢纽——线上问题自动沉淀为评测资产）';
+
+-- 14. 模型计价表（工单 0148 U2：成本看板读时派生——cost = tokens/1000 × 单价）
+CREATE TABLE IF NOT EXISTS model_pricing (
+    id                 BIGINT        NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    model              VARCHAR(128)  NOT NULL COMMENT '模型名（与 chat_result_log.model_version 匹配，唯一）',
+    input_price_per_1k DECIMAL(18,6) NOT NULL DEFAULT 0 COMMENT '输入单价：每 1K prompt token',
+    output_price_per_1k DECIMAL(18,6) NOT NULL DEFAULT 0 COMMENT '输出单价：每 1K completion token',
+    remark             VARCHAR(256)  COMMENT '备注（币种/生效口径）',
+    update_time        DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '更新时间（应用层维护）',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_pricing_model (model)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='模型计价表（成本读时派生口径）';
+-- 幂等种子（示例价，运营按需修正；upsert 语义可重复执行）：
+-- INSERT INTO model_pricing (model, input_price_per_1k, output_price_per_1k, remark)
+-- VALUES ('deepseek-v4-pro', 0.002, 0.008, '示例价') ON DUPLICATE KEY UPDATE remark = VALUES(remark);

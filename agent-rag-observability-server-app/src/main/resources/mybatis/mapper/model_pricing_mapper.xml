@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- 模型计价表 mapper（工单 0148 U2）：upsert 按 databaseId 成对分叉（MySQL ON DUPLICATE KEY / PG ON CONFLICT），其余通用 -->
+<mapper namespace="cn.chyuan.ai.observability.infrastructure.dao.mapper.ModelPricingMapper">
+
+    <insert id="upsert" parameterType="cn.chyuan.ai.observability.infrastructure.dao.po.ModelPricingPO" databaseId="mysql">
+        INSERT INTO model_pricing (model, input_price_per_1k, output_price_per_1k, remark, update_time)
+        VALUES (#{model}, #{inputPricePer1k}, #{outputPricePer1k}, #{remark}, #{updateTime})
+        ON DUPLICATE KEY UPDATE
+            input_price_per_1k = VALUES(input_price_per_1k),
+            output_price_per_1k = VALUES(output_price_per_1k),
+            remark = VALUES(remark),
+            update_time = VALUES(update_time)
+    </insert>
+
+    <insert id="upsert" parameterType="cn.chyuan.ai.observability.infrastructure.dao.po.ModelPricingPO" databaseId="postgresql">
+        INSERT INTO model_pricing (model, input_price_per_1k, output_price_per_1k, remark, update_time)
+        VALUES (#{model}, #{inputPricePer1k}, #{outputPricePer1k}, #{remark}, #{updateTime})
+        ON CONFLICT (model) DO UPDATE
+        SET input_price_per_1k = EXCLUDED.input_price_per_1k,
+            output_price_per_1k = EXCLUDED.output_price_per_1k,
+            remark = EXCLUDED.remark,
+            update_time = EXCLUDED.update_time
+    </insert>
+
+    <sql id="allColumns">
+        id, model, input_price_per_1k, output_price_per_1k, remark, update_time
+    </sql>
+
+    <select id="selectByModel" resultType="cn.chyuan.ai.observability.infrastructure.dao.po.ModelPricingPO">
+        SELECT <include refid="allColumns"/> FROM model_pricing WHERE model = #{model}
+    </select>
+
+    <select id="selectAll" resultType="cn.chyuan.ai.observability.infrastructure.dao.po.ModelPricingPO">
+        SELECT <include refid="allColumns"/> FROM model_pricing ORDER BY model ASC
+    </select>
+
+</mapper>

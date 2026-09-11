@@ -188,4 +188,25 @@ public class EsChatResultRepository implements IChatResultRepository {
             return List.of();
         }
     }
+
+    /** 成本聚合取数（工单 0148 U2）：时间窗 + 摘要字段 source 过滤，按 createTime 降序。 */
+    @Override
+    public List<ChatResultEntity> queryCostSources(String startTime, int limit) {
+        try {
+            SearchResponse<ChatResultEntity> response = esClient.search(s -> s
+                    .index(INDEX_PREFIX + "*")
+                    .query(q -> q.range(r -> r.field("createTime")
+                            .gte(co.elastic.clients.json.JsonData.of(startTime))))
+                    .source(src -> src.filter(f -> f.includes(
+                            "createTime", "agentId", "modelVersion", "promptTokens", "completionTokens", "finalStatus")))
+                    .sort(sort -> sort.field(f -> f.field("createTime").order(SortOrder.Desc)))
+                    .size(Math.min(Math.max(limit, 1), 5000)), ChatResultEntity.class);
+            return response.hits().hits().stream()
+                    .map(Hit::source)
+                    .toList();
+        } catch (Exception e) {
+            log.error("ES query cost sources error, startTime={}", startTime, e);
+            return List.of();
+        }
+    }
 }
