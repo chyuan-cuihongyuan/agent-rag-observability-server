@@ -15,6 +15,7 @@
 -- 工单 0176（四期 X7）：新增第 18 表 judge_cache（judge 判定缓存），2026-09-11。
 -- 工单 0179（四期 Y3）：新增第 19 表 alert_silence（告警静默窗口），2026-09-11。
 -- 工单 0180（四期 Y4）：新增第 20 表 dlq_record（死信记录），2026-09-11。
+-- 工单 0182（四期 Y6）：新增第 21 表 config_change_event（配置变更审计），2026-09-11。
 -- 口径：
 --   (1) agent_decision_log / rag_retrieval_log / chat_result_log 三表以
 --       docs/02-agent-rag-observability-server/09-补充技术细节.md 第 1040-1128 行
@@ -664,3 +665,15 @@ COMMENT ON COLUMN dlq_record.topic_tag IS '消息标签（decision/retrieval/cha
 COMMENT ON COLUMN dlq_record.payload IS '消息原文（截断 8KB）';
 COMMENT ON COLUMN dlq_record.status IS '状态：PENDING-待重放，REPLAYED-已成功重放';
 CREATE INDEX IF NOT EXISTS idx_dlq_status ON dlq_record (status, create_time);
+
+-- 21. 配置变更事件表（工单 0182 Y6：关键配置 update 前后 diff 留痕，敏感值脱敏）
+CREATE TABLE IF NOT EXISTS config_change_event (
+    id           BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    table_name   VARCHAR(64)  NOT NULL,
+    biz_key      VARCHAR(128),
+    changes_json TEXT,
+    operator     VARCHAR(64)  NOT NULL DEFAULT 'unknown',
+    create_time  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+COMMENT ON TABLE config_change_event IS '配置变更事件表（漂移审计：字段级 from→to，敏感值脱敏）';
+CREATE INDEX IF NOT EXISTS idx_config_table ON config_change_event (table_name, create_time);

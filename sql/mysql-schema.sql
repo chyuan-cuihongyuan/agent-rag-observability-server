@@ -15,6 +15,7 @@
 -- 工单 0176（四期 X7）：新增第 18 表 judge_cache（judge 判定缓存），2026-09-11。
 -- 工单 0179（四期 Y3）：新增第 19 表 alert_silence（告警静默窗口），2026-09-11。
 -- 工单 0180（四期 Y4）：新增第 20 表 dlq_record（死信记录），2026-09-11。
+-- 工单 0182（四期 Y6）：新增第 21 表 config_change_event（配置变更审计），2026-09-11。
 -- 口径：
 --   (1) agent_decision_log / rag_retrieval_log / chat_result_log 三表以
 --       docs/02-agent-rag-observability-server/09-补充技术细节.md 第 1040-1128 行
@@ -464,3 +465,15 @@ CREATE TABLE IF NOT EXISTS dlq_record (
     PRIMARY KEY (id),
     INDEX idx_dlq_status (status, create_time)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='死信记录表';
+
+-- 21. 配置变更事件表（工单 0182 Y6：关键配置 update 前后 diff 留痕，敏感值脱敏）
+CREATE TABLE IF NOT EXISTS config_change_event (
+    id           BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    table_name   VARCHAR(64)  NOT NULL COMMENT '配置表名（eval_gate/alert_silence/feature_flag…）',
+    biz_key      VARCHAR(128) COMMENT '业务键（如 gateId）',
+    changes_json TEXT         COMMENT '变更明细 JSON 数组 [{field,from,to}]（敏感值脱敏）',
+    operator     VARCHAR(64)  NOT NULL DEFAULT 'unknown' COMMENT '操作者（留痕）',
+    create_time  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '变更时间',
+    PRIMARY KEY (id),
+    INDEX idx_config_table (table_name, create_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='配置变更事件表（漂移审计）';

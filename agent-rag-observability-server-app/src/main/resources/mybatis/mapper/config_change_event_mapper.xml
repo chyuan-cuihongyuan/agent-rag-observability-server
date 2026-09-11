@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- 配置变更事件表 mapper（工单 0182 Y6）：双方言通用语句 -->
+<mapper namespace="cn.chyuan.ai.observability.infrastructure.dao.mapper.ConfigChangeEventMapper">
+
+    <sql id="allColumns">
+        id, table_name, biz_key, changes_json, operator, create_time
+    </sql>
+
+    <insert id="insert" parameterType="cn.chyuan.ai.observability.infrastructure.dao.po.ConfigChangeEventPO" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO config_change_event (table_name, biz_key, changes_json, operator, create_time)
+        VALUES (#{tableName}, #{bizKey}, #{changesJson}, #{operator}, #{createTime})
+    </insert>
+
+    <select id="selectList" resultType="cn.chyuan.ai.observability.infrastructure.dao.po.ConfigChangeEventPO">
+        SELECT <include refid="allColumns"/> FROM config_change_event
+        <where>
+            <if test="tableName != null and tableName != ''">AND table_name = #{tableName}</if>
+            <if test="operator != null and operator != ''">AND operator = #{operator}</if>
+        </where>
+        ORDER BY create_time DESC, id DESC LIMIT #{size} OFFSET #{offset}
+    </select>
+
+</mapper>

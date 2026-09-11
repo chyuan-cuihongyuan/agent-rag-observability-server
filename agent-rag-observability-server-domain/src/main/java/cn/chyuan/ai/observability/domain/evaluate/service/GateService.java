@@ -1,5 +1,6 @@
 package cn.chyuan.ai.observability.domain.evaluate.service;
 
+import cn.chyuan.ai.observability.domain.alert.service.ConfigDriftAuditor;
 import cn.chyuan.ai.observability.domain.evaluate.adapter.repository.IGateRecordRepository;
 import cn.chyuan.ai.observability.domain.evaluate.adapter.repository.IGateRepository;
 import cn.chyuan.ai.observability.domain.evaluate.model.entity.GateEntity;
@@ -37,10 +38,13 @@ public class GateService {
 
     private final IGateRepository gateRepository;
     private final IGateRecordRepository gateRecordRepository;
+    private final ConfigDriftAuditor configDriftAuditor;
 
-    public GateService(IGateRepository gateRepository, IGateRecordRepository gateRecordRepository) {
+    public GateService(IGateRepository gateRepository, IGateRecordRepository gateRecordRepository,
+                       ConfigDriftAuditor configDriftAuditor) {
         this.gateRepository = gateRepository;
         this.gateRecordRepository = gateRecordRepository;
+        this.configDriftAuditor = configDriftAuditor;
     }
 
     // ===== CRUD =====
@@ -106,7 +110,20 @@ public class GateService {
         entity.setTrials(entity.getTrials() == null ? existing.getTrials() : entity.getTrials());
         entity.setEnabled(entity.getEnabled() == null ? existing.getEnabled() : entity.getEnabled());
         entity.setUpdateTime(LocalDateTime.now().format(FMT));
+        // 配置漂移审计（工单 0182 Y6）：更新前后快照 diff 留痕（审计失败不阻断业务）
+        configDriftAuditor.record("eval_gate", entity.getGateId(), snapshot(existing), snapshot(entity), "gate-update");
         gateRepository.update(entity);
+    }
+
+    /** 配置快照（脱敏由审计器负责） */
+    private Map<String, String> snapshot(GateEntity e) {
+        Map<String, String> snap = new LinkedHashMap<>();
+        snap.put("name", e.getName());
+        snap.put("safetyDimsJson", e.getSafetyDimsJson());
+        snap.put("scoreThresholdsJson", e.getScoreThresholdsJson());
+        snap.put("trials", String.valueOf(e.getTrials()));
+        snap.put("enabled", String.valueOf(e.getEnabled()));
+        return snap;
     }
 
     /** 删除门禁：以停用代替删除（历史门禁记录仍可追溯） */

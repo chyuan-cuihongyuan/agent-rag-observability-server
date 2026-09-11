@@ -103,7 +103,8 @@ class BacktestGateFlowTest {
 
         // 4. 记录可查：门禁记录按任务查询（CI 第二跳）
         when(gateRecordRepository.queryByTaskId(result.get("taskId"))).thenAnswer(inv -> insertedRecord.get());
-        GateService gateService = new GateService(gateRepository, gateRecordRepository);
+        GateService gateService = new GateService(gateRepository, gateRecordRepository,
+                new cn.chyuan.ai.observability.domain.alert.service.ConfigDriftAuditor(null));
         GateRecordEntity record = gateService.queryRecordByTaskId(result.get("taskId"));
         assertNotNull(record, "回测完成后门禁记录应可查");
         assertEquals(result.get("taskId"), record.getTaskId());

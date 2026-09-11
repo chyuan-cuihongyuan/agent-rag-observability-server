@@ -35,6 +35,8 @@ class GateServiceTest {
     private IGateRepository gateRepository;
     @Mock
     private IGateRecordRepository gateRecordRepository;
+    @Mock
+    private cn.chyuan.ai.observability.domain.alert.service.ConfigDriftAuditor configDriftAuditor;
 
     @InjectMocks
     private GateService gateService;
