@@ -9,6 +9,7 @@
 -- 工单 0137（三期 S1）：新增第 12 表 patrol_record（巡检拨测记录），2026-09-11。
 -- 工单 0138（三期 S2）：新增第 13 表 eval_case_candidate（Case 挖掘候选），2026-09-11。
 -- 工单 0148（四期 U2）：新增第 14 表 model_pricing（模型计价），2026-09-11。
+-- 工单 0150（四期 U4）：新增第 15 表 trace_annotation（人工评分注解），2026-09-11。
 -- 口径：
 --   (1) agent_decision_log / rag_retrieval_log / chat_result_log 三表以
 --       docs/02-agent-rag-observability-server/09-补充技术细节.md 第 1040-1128 行
@@ -379,3 +380,16 @@ CREATE TABLE IF NOT EXISTS model_pricing (
 -- 幂等种子（示例价，运营按需修正；upsert 语义可重复执行）：
 -- INSERT INTO model_pricing (model, input_price_per_1k, output_price_per_1k, remark)
 -- VALUES ('deepseek-v4-pro', 0.002, 0.008, '示例价') ON DUPLICATE KEY UPDATE remark = VALUES(remark);
+
+-- 15. 人工注解表（工单 0150 U4：trace 人工 1-5 分评分 + 依据；借鉴 Langfuse annotations）
+CREATE TABLE IF NOT EXISTS trace_annotation (
+    id          BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    trace_id    VARCHAR(64)  NOT NULL COMMENT '关联链路 traceId',
+    score       INT          NOT NULL COMMENT '评分 1-5（1=很差，5=很好）',
+    note        VARCHAR(1024) COMMENT '判定依据备注',
+    operator    VARCHAR(64)  NOT NULL DEFAULT 'unknown' COMMENT '标注人（操作留痕）',
+    create_time DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '首次标注时间',
+    update_time DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '最近标注时间（重评即改判）',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_annotation (trace_id, operator)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='人工评分注解表（主观质量资产化）';

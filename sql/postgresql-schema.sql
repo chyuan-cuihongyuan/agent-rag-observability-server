@@ -9,6 +9,7 @@
 -- 工单 0137（三期 S1）：新增第 12 表 patrol_record（巡检拨测记录），2026-09-11。
 -- 工单 0138（三期 S2）：新增第 13 表 eval_case_candidate（Case 挖掘候选），2026-09-11。
 -- 工单 0148（四期 U2）：新增第 14 表 model_pricing（模型计价），2026-09-11。
+-- 工单 0150（四期 U4）：新增第 15 表 trace_annotation（人工评分注解），2026-09-11。
 -- 口径：
 --   (1) agent_decision_log / rag_retrieval_log / chat_result_log 三表以
 --       docs/02-agent-rag-observability-server/09-补充技术细节.md 第 1040-1128 行
@@ -564,3 +565,22 @@ COMMENT ON COLUMN model_pricing.update_time IS '更新时间（应用层维护�
 -- 幂等种子（示例价，运营按需修正）：INSERT ... ON CONFLICT (model) DO NOTHING
 -- INSERT INTO model_pricing (model, input_price_per_1k, output_price_per_1k, remark)
 -- VALUES ('deepseek-v4-pro', 0.002, 0.008, '示例价') ON CONFLICT (model) DO NOTHING;
+
+-- 15. 人工注解表（工单 0150 U4：trace 人工 1-5 分评分 + 依据；借鉴 Langfuse annotations）
+CREATE TABLE IF NOT EXISTS trace_annotation (
+    id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    trace_id    VARCHAR(64)  NOT NULL,
+    score       INT          NOT NULL,
+    note        VARCHAR(1024),
+    operator    VARCHAR(64)  NOT NULL DEFAULT 'unknown',
+    create_time TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    update_time TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uk_annotation UNIQUE (trace_id, operator)
+);
+COMMENT ON TABLE trace_annotation IS '人工评分注解表（主观质量资产化：1-5 分 + 依据，重评即改判）';
+COMMENT ON COLUMN trace_annotation.trace_id IS '关联链路 traceId';
+COMMENT ON COLUMN trace_annotation.score IS '评分 1-5（1=很差，5=很好）';
+COMMENT ON COLUMN trace_annotation.note IS '判定依据备注';
+COMMENT ON COLUMN trace_annotation.operator IS '标注人（操作留痕）';
+COMMENT ON COLUMN trace_annotation.create_time IS '首次标注时间';
+COMMENT ON COLUMN trace_annotation.update_time IS '最近标注时间（重评即改判）';

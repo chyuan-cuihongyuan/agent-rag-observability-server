@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- 人工注解表 mapper（工单 0150 U4）：upsert 同 id 按 databaseId 成对分叉（MySQL ON DUPLICATE KEY / PG ON CONFLICT），其余双方言通用 -->
+<mapper namespace="cn.chyuan.ai.observability.infrastructure.dao.mapper.TraceAnnotationMapper">
+
+    <insert id="upsert" parameterType="cn.chyuan.ai.observability.infrastructure.dao.po.TraceAnnotationPO" databaseId="mysql">
+        INSERT INTO trace_annotation (trace_id, score, note, operator, create_time, update_time)
+        VALUES (#{traceId}, #{score}, #{note}, #{operator}, #{createTime}, #{updateTime})
+        ON DUPLICATE KEY UPDATE
+            score = VALUES(score),
+            note = VALUES(note),
+            update_time = VALUES(update_time)
+    </insert>
+
+    <insert id="upsert" parameterType="cn.chyuan.ai.observability.infrastructure.dao.po.TraceAnnotationPO" databaseId="postgresql">
+        INSERT INTO trace_annotation (trace_id, score, note, operator, create_time, update_time)
+        VALUES (#{traceId}, #{score}, #{note}, #{operator}, #{createTime}, #{updateTime})
+        ON CONFLICT (trace_id, operator) DO UPDATE
+        SET score = EXCLUDED.score,
+            note = EXCLUDED.note,
+            update_time = EXCLUDED.update_time
+    </insert>
+
+    <sql id="allColumns">
+        id, trace_id, score, note, operator, create_time, update_time
+    </sql>
+
+    <select id="selectByTraceAndOperator" resultType="cn.chyuan.ai.observability.infrastructure.dao.po.TraceAnnotationPO">
+        SELECT <include refid="allColumns"/> FROM trace_annotation
+        WHERE trace_id = #{traceId} AND operator = #{operator}
+    </select>
+
+    <select id="selectList" resultType="cn.chyuan.ai.observability.infrastructure.dao.po.TraceAnnotationPO">
+        SELECT <include refid="allColumns"/> FROM trace_annotation
+        <where>
+            <if test="score != null">AND score = #{score}</if>
+        </where>
+        ORDER BY update_time DESC, id DESC LIMIT #{size} OFFSET #{offset}
+    </select>
+
+</mapper>
