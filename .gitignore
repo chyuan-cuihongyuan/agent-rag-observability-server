@@ -23,3 +23,6 @@ application-dev.yml
 application-prod.yml
 application-test.yml
 .mimosa/
+
+# AUTOLOOP al-05：安全策略文件入库
+!.github/SECURITY.md
