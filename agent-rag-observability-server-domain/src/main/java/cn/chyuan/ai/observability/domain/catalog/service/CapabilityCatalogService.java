@@ -81,6 +81,63 @@ public class CapabilityCatalogService {
         return rows;
     }
 
+    /**
+     * 计分卡 v2（工单 0245 AF9，借鉴 Backstage Tech Insights）——能力 × 质量门加权：
+     * 每能力四门：tests(40)/docs(30)/contract(20)/defaultOff(10)，
+     * quality 由 catalog.json 每服务 quality 字段注入
+     * （{能力名: {tests:true,docs:"docs/..",contract:true,defaultOff:true}}，缺门记 0）。
+     * 服务级 v2 分 = 能力 v2 分均值；纯函数可测。
+     */
+    public Map<String, Object> scorecardV2(List<CatalogServiceEntry> entries,
+                                           Map<String, Map<String, Map<String, Object>>> qualityByService) {
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (CatalogServiceEntry e : entries) {
+            List<String> capabilities = e.getCapabilities() == null ? List.of() : e.getCapabilities();
+            Map<String, Map<String, Object>> quality =
+                    qualityByService.getOrDefault(e.getName(), Map.of());
+            List<Map<String, Object>> capabilityRows = new ArrayList<>();
+            long capabilitySum = 0;
+            for (String capability : capabilities) {
+                Map<String, Object> gates = quality.getOrDefault(capability, Map.of());
+                long tests = truthy(gates.get("tests")) ? 40 : 0;
+                long docs = truthy(gates.get("docs")) ? 30 : 0;
+                long contract = truthy(gates.get("contract")) ? 20 : 0;
+                long defaultOff = truthy(gates.get("defaultOff")) ? 10 : 0;
+                long total = tests + docs + contract + defaultOff;
+                capabilitySum += total;
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("capability", capability);
+                row.put("gates", Map.of("tests", tests, "docs", docs,
+                        "contract", contract, "defaultOff", defaultOff));
+                row.put("score", total);
+                capabilityRows.add(row);
+            }
+            long serviceScore = capabilities.isEmpty() ? 0 : capabilitySum / capabilities.size();
+            Map<String, Object> serviceRow = new LinkedHashMap<>();
+            serviceRow.put("service", e.getName());
+            serviceRow.put("capabilities", capabilityRows);
+            serviceRow.put("scoreV2", serviceScore);
+            rows.add(serviceRow);
+        }
+        long overall = rows.isEmpty() ? 0
+                : rows.stream().mapToLong(r -> (Long) r.get("scoreV2")).sum() / rows.size();
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("services", rows);
+        out.put("overallScoreV2", overall);
+        return out;
+    }
+
+    /** 质量门取值判定：Boolean true / 字符串非空非 "false" 即达标 */
+    private static boolean truthy(Object value) {
+        if (value instanceof Boolean b) {
+            return b;
+        }
+        if (value instanceof String s) {
+            return !s.isBlank() && !"false".equalsIgnoreCase(s);
+        }
+        return false;
+    }
+
     /** 端点装配：探测 + 计分 + 总分 */
     public Map<String, Object> buildScorecard() {
         Map<String, HealthProbe.ProbeResult> health = new LinkedHashMap<>();
