@@ -477,3 +477,64 @@ CREATE TABLE IF NOT EXISTS config_change_event (
     PRIMARY KEY (id),
     INDEX idx_config_table (table_name, create_time)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='配置变更事件表（漂移审计）';
+
+-- 22. 消费延迟快照表（工单 0220 AD1）
+CREATE TABLE IF NOT EXISTS lag_snapshot (
+  id          BIGINT AUTO_INCREMENT PRIMARY KEY,
+  topic       VARCHAR(128) NOT NULL COMMENT 'topic 名',
+  lag         BIGINT       NOT NULL DEFAULT 0 COMMENT '积压条数',
+  level       VARCHAR(16)  NOT NULL COMMENT 'OK/WARN/CRITICAL',
+  sampled_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_lag_sampled (sampled_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='消费延迟快照（工单 0220 AD1）';
+
+-- 23. 数据质量规则表（工单 0221 AD2）
+CREATE TABLE IF NOT EXISTS quality_rule (
+  id         BIGINT AUTO_INCREMENT PRIMARY KEY,
+  name       VARCHAR(128) NOT NULL COMMENT '规则名（唯一）',
+  target     VARCHAR(128) NULL COMMENT '目标数据面',
+  field      VARCHAR(128) NOT NULL COMMENT '字段名',
+  type       VARCHAR(16)  NOT NULL COMMENT 'NOT_NULL/RANGE/ENUM/FRESHNESS',
+  params_json TEXT        NULL COMMENT '参数 JSON（min/max/values/maxAgeMs）',
+  enabled    SMALLINT     NOT NULL DEFAULT 1,
+  update_time DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_quality_rule_name (name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='数据质量期望规则（工单 0221 AD2）';
+
+-- 24. 数据质量校验结果表（工单 0221 AD2）
+CREATE TABLE IF NOT EXISTS quality_result (
+  id          BIGINT AUTO_INCREMENT PRIMARY KEY,
+  rule_name   VARCHAR(128) NOT NULL COMMENT '规则名',
+  pass        SMALLINT     NOT NULL COMMENT '1=通过 0=失败',
+  checked     INT          NOT NULL DEFAULT 0 COMMENT '检查行数',
+  violated    INT          NOT NULL DEFAULT 0 COMMENT '违规行数',
+  samples_json TEXT        NULL COMMENT '失败样本 JSON（封顶 5）',
+  ran_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_quality_result_rule (rule_name, ran_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='数据质量校验结果（工单 0221 AD2）';
+
+-- 25. 回填任务表（工单 0222 AD3）
+CREATE TABLE IF NOT EXISTS backfill_job (
+  id           BIGINT AUTO_INCREMENT PRIMARY KEY,
+  job_id       VARCHAR(64)  NOT NULL COMMENT '任务 id（UUID）',
+  name         VARCHAR(128) NOT NULL COMMENT '任务名',
+  range_start  BIGINT       NOT NULL COMMENT '范围起点（闭区间）',
+  range_end    BIGINT       NOT NULL COMMENT '范围终点（闭区间）',
+  shard_count  INT          NOT NULL COMMENT '分片数',
+  completed_json TEXT       NULL COMMENT '已完成分片号 JSON 数组',
+  status       VARCHAR(16)  NOT NULL DEFAULT 'PENDING' COMMENT 'PENDING/RUNNING/DONE',
+  create_time  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  update_time  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_backfill_job_id (job_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='回填任务（工单 0222 AD3）';
+
+-- 26. SLA 错过记录表（工单 0223 AD4）
+CREATE TABLE IF NOT EXISTS sla_miss (
+  id          BIGINT AUTO_INCREMENT PRIMARY KEY,
+  task        VARCHAR(128) NOT NULL COMMENT '调度任务名',
+  expected_ms BIGINT       NOT NULL COMMENT '预计完成时长毫秒',
+  actual_ms   BIGINT       NOT NULL COMMENT '实际完成时长毫秒',
+  overdue_ms  BIGINT       NOT NULL COMMENT '超时毫秒',
+  detected_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_sla_miss_task (task, detected_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='SLA 错过记录（工单 0223 AD4）';

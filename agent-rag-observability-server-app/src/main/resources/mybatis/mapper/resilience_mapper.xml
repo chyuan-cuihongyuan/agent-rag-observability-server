@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- 调度韧性聚合 mapper（工单 0220-0223 AD 簇；双方言公共子集，行以 map 承载，列别名=camelCase 键） -->
+<mapper namespace="cn.chyuan.ai.infrastructure.dao.IResilienceDao">
+
+    <insert id="insertLag">
+        INSERT INTO lag_snapshot (topic, lag, level, sampled_at)
+        VALUES (#{topic}, #{lag}, #{level}, CURRENT_TIMESTAMP)
+    </insert>
+
+    <select id="selectRecentLags" resultType="java.util.LinkedHashMap">
+        SELECT topic AS "topic", lag AS "lag", level AS "level", sampled_at AS "sampledAt"
+        FROM lag_snapshot
+        ORDER BY sampled_at DESC, id DESC
+        LIMIT #{limit}
+    </select>
+
+    <insert id="insertQualityRule">
+        INSERT INTO quality_rule (name, target, field, type, params_json, enabled, update_time)
+        VALUES (#{name}, #{target}, #{field}, #{type}, #{paramsJson}, #{enabled}, CURRENT_TIMESTAMP)
+    </insert>
+
+    <update id="updateQualityRule">
+        UPDATE quality_rule
+        SET target = #{target}, field = #{field}, type = #{type},
+            params_json = #{paramsJson}, enabled = #{enabled}, update_time = CURRENT_TIMESTAMP
+        WHERE name = #{name}
+    </update>
+
+    <select id="selectQualityRule" resultType="java.util.LinkedHashMap">
+        SELECT name AS "name", target AS "target", field AS "field", type AS "type",
+               params_json AS "paramsJson", enabled AS "enabled"
+        FROM quality_rule
+        WHERE name = #{name}
+    </select>
+
+    <select id="selectQualityRules" resultType="java.util.LinkedHashMap">
+        SELECT name AS "name", target AS "target", field AS "field", type AS "type",
+               params_json AS "paramsJson", enabled AS "enabled"
+        FROM quality_rule
+        ORDER BY name ASC
+    </select>
+
+    <delete id="deleteQualityRule">
+        DELETE FROM quality_rule WHERE name = #{name}
+    </delete>
+
+    <insert id="insertQualityResult">
+        INSERT INTO quality_result (rule_name, pass, checked, violated, samples_json, ran_at)
+        VALUES (#{ruleName}, #{pass}, #{checked}, #{violated}, #{samplesJson}, CURRENT_TIMESTAMP)
+    </insert>
+
+    <select id="selectRecentQualityResults" resultType="java.util.LinkedHashMap">
+        SELECT rule_name AS "ruleName", pass AS "pass", checked AS "checked",
+               violated AS "violated", samples_json AS "samplesJson", ran_at AS "ranAt"
+        FROM quality_result
+        ORDER BY ran_at DESC, id DESC
+        LIMIT #{limit}
+    </select>
+
+    <insert id="insertBackfill">
+        INSERT INTO backfill_job (job_id, name, range_start, range_end, shard_count,
+                                  completed_json, status, create_time, update_time)
+        VALUES (#{jobId}, #{name}, #{rangeStart}, #{rangeEnd}, #{shardCount},
+                #{completedJson}, #{status}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    </insert>
+
+    <update id="updateBackfill">
+        UPDATE backfill_job
+        SET completed_json = #{completedJson}, status = #{status}, update_time = CURRENT_TIMESTAMP
+        WHERE job_id = #{jobId}
+    </update>
+
+    <select id="selectBackfill" resultType="java.util.LinkedHashMap">
+        SELECT job_id AS "jobId", name AS "name", range_start AS "rangeStart",
+               range_end AS "rangeEnd", shard_count AS "shardCount",
+               completed_json AS "completedJson", status AS "status"
+        FROM backfill_job
+        WHERE job_id = #{jobId}
+    </select>
+
+    <insert id="insertSlaMiss">
+        INSERT INTO sla_miss (task, expected_ms, actual_ms, overdue_ms, detected_at)
+        VALUES (#{task}, #{expectedMs}, #{actualMs}, #{overdueMs}, CURRENT_TIMESTAMP)
+    </insert>
+
+    <select id="selectRecentSlaMisses" resultType="java.util.LinkedHashMap">
+        SELECT task AS "task", expected_ms AS "expectedMs", actual_ms AS "actualMs",
+               overdue_ms AS "overdueMs", detected_at AS "detectedAt"
+        FROM sla_miss
+        ORDER BY detected_at DESC, id DESC
+        LIMIT #{limit}
+    </select>
+</mapper>

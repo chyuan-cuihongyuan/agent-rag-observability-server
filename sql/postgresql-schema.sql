@@ -677,3 +677,69 @@ CREATE TABLE IF NOT EXISTS config_change_event (
 );
 COMMENT ON TABLE config_change_event IS '配置变更事件表（漂移审计：字段级 from→to，敏感值脱敏）';
 CREATE INDEX IF NOT EXISTS idx_config_table ON config_change_event (table_name, create_time);
+
+-- 22. 消费延迟快照表（工单 0220 AD1：topic lag 采样 + 水位分级）
+CREATE TABLE IF NOT EXISTS lag_snapshot (
+    id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    topic       VARCHAR(128) NOT NULL,
+    lag         BIGINT       NOT NULL DEFAULT 0,
+    level       VARCHAR(16)  NOT NULL,
+    sampled_at  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+COMMENT ON TABLE lag_snapshot IS '消费延迟快照（AD1：水位分级 OK/WARN/CRITICAL）';
+CREATE INDEX IF NOT EXISTS idx_lag_sampled ON lag_snapshot (sampled_at);
+
+-- 23. 数据质量规则表（工单 0221 AD2：期望规则，借鉴 Great Expectations）
+CREATE TABLE IF NOT EXISTS quality_rule (
+    id         BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    name       VARCHAR(128) NOT NULL,
+    target     VARCHAR(128),
+    field      VARCHAR(128) NOT NULL,
+    type       VARCHAR(16)  NOT NULL,
+    params_json TEXT,
+    enabled    SMALLINT     NOT NULL DEFAULT 1,
+    update_time TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uk_quality_rule_name UNIQUE (name)
+);
+COMMENT ON TABLE quality_rule IS '数据质量期望规则（NOT_NULL/RANGE/ENUM/FRESHNESS）';
+
+-- 24. 数据质量校验结果表（工单 0221 AD2：断言运行留痕）
+CREATE TABLE IF NOT EXISTS quality_result (
+    id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    rule_name   VARCHAR(128) NOT NULL,
+    pass        SMALLINT     NOT NULL,
+    checked     INT          NOT NULL DEFAULT 0,
+    violated    INT          NOT NULL DEFAULT 0,
+    samples_json TEXT,
+    ran_at      TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+COMMENT ON TABLE quality_result IS '数据质量校验结果（失败样本 JSON 封顶 5 条）';
+CREATE INDEX IF NOT EXISTS idx_quality_result_rule ON quality_result (rule_name, ran_at);
+
+-- 25. 回填任务表（工单 0222 AD3：范围分片 + 已完成集，幂等重跑）
+CREATE TABLE IF NOT EXISTS backfill_job (
+    id           BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    job_id       VARCHAR(64)  NOT NULL,
+    name         VARCHAR(128) NOT NULL,
+    range_start  BIGINT       NOT NULL,
+    range_end    BIGINT       NOT NULL,
+    shard_count  INT          NOT NULL,
+    completed_json TEXT,
+    status       VARCHAR(16)  NOT NULL DEFAULT 'PENDING',
+    create_time  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    update_time  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uk_backfill_job_id UNIQUE (job_id)
+);
+COMMENT ON TABLE backfill_job IS '回填任务（AD3：仅 pending 分片执行，完成即落档）';
+
+-- 26. SLA 错过记录表（工单 0223 AD4：预计 vs 实际超时留痕）
+CREATE TABLE IF NOT EXISTS sla_miss (
+    id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    task        VARCHAR(128) NOT NULL,
+    expected_ms BIGINT       NOT NULL,
+    actual_ms   BIGINT       NOT NULL,
+    overdue_ms  BIGINT       NOT NULL,
+    detected_at TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+COMMENT ON TABLE sla_miss IS 'SLA 错过记录（AD4：调度任务超预计完成时长）';
+CREATE INDEX IF NOT EXISTS idx_sla_miss_task ON sla_miss (task, detected_at);
