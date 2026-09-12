@@ -1,6 +1,9 @@
 package cn.chyuan.ai.observability.infrastructure.es.attributes;
 
+import cn.chyuan.ai.observability.domain.observe.model.entity.AgentDecisionEntity;
 import cn.chyuan.ai.observability.domain.observe.model.entity.ChatResultEntity;
+import cn.chyuan.ai.observability.domain.observe.model.entity.MemoryRecallLogEntity;
+import cn.chyuan.ai.observability.domain.observe.model.entity.RagRetrievalEntity;
 import cn.chyuan.ai.observability.domain.observe.model.entity.ToolCallLogEntity;
 
 import java.util.LinkedHashMap;
@@ -43,6 +46,46 @@ public final class OtelAttributeMapper {
         }
         if (entity.getFinalStatus() != null && !"success".equalsIgnoreCase(entity.getFinalStatus())) {
             put(attrs, OtelTraceAttributes.ERROR_TYPE, entity.getFinalStatus());
+        }
+        return attrs;
+    }
+
+    public static Map<String, String> fromRagRetrieval(RagRetrievalEntity entity) {
+        Map<String, String> attrs = new LinkedHashMap<>();
+        put(attrs, OtelTraceAttributes.TRACE_ID, entity.getTraceId());
+        put(attrs, OtelTraceAttributes.GEN_AI_OPERATION_NAME, "retrieval");
+        if (entity.getRetrievalTopk() != null) {
+            put(attrs, "gen_ai.retrieval.topk", String.valueOf(entity.getRetrievalTopk()));
+        }
+        if (entity.getRetrievalCount() != null) {
+            put(attrs, "gen_ai.retrieval.count", String.valueOf(entity.getRetrievalCount()));
+        }
+        if (entity.getEmptyRetrieval() != null && entity.getEmptyRetrieval() == 1) {
+            put(attrs, OtelTraceAttributes.ERROR_TYPE, "empty_retrieval");
+        }
+        return attrs;
+    }
+
+    public static Map<String, String> fromAgentDecision(AgentDecisionEntity entity) {
+        Map<String, String> attrs = new LinkedHashMap<>();
+        put(attrs, OtelTraceAttributes.TRACE_ID, entity.getTraceId());
+        put(attrs, OtelTraceAttributes.GEN_AI_OPERATION_NAME, "plan");
+        put(attrs, "gen_ai.request.model", entity.getModelVersion());
+        put(attrs, "gen_ai.agent.intent", entity.getIntentType());
+        put(attrs, "gen_ai.agent.branch", entity.getBranchType());
+        if (entity.getToolRetryTimes() != null && entity.getToolRetryTimes() > 0) {
+            put(attrs, OtelTraceAttributes.ERROR_TYPE, "tool_retry");
+        }
+        return attrs;
+    }
+
+    public static Map<String, String> fromMemoryRecall(MemoryRecallLogEntity entity) {
+        Map<String, String> attrs = new LinkedHashMap<>();
+        put(attrs, OtelTraceAttributes.TRACE_ID, entity.getTraceId());
+        put(attrs, OtelTraceAttributes.GEN_AI_OPERATION_NAME, "memory_recall");
+        if (entity.getSessionMemoryScores() != null && !entity.getSessionMemoryScores().isEmpty()) {
+            put(attrs, "gen_ai.memory.top_score", String.valueOf(entity.getSessionMemoryScores().stream()
+                    .mapToDouble(Double::doubleValue).max().orElse(0d)));
         }
         return attrs;
     }

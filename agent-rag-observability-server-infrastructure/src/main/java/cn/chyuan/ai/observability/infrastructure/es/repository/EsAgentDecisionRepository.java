@@ -8,6 +8,7 @@ import co.elastic.clients.elasticsearch.core.IndexRequest;
 import co.elastic.clients.elasticsearch.core.SearchResponse;
 import co.elastic.clients.elasticsearch.core.search.Hit;
 import cn.chyuan.ai.observability.infrastructure.dao.repository.MysqlLogRepository;
+import cn.chyuan.ai.observability.infrastructure.es.attributes.OtelAttributeMapper;
 import cn.chyuan.ai.observability.infrastructure.es.bulk.EsBulkIndexService;
 import cn.chyuan.ai.observability.infrastructure.metrics.ObserveMetrics;
 import jakarta.annotation.Resource;
@@ -41,6 +42,7 @@ public class EsAgentDecisionRepository implements IAgentDecisionRepository {
     @Override
     public void save(AgentDecisionEntity entity) {
         try {
+            entity.setOtelAttributes(OtelAttributeMapper.fromAgentDecision(entity));
             String indexName = INDEX_PREFIX + "-" + entity.getCreateTime().substring(0, 7).replace("-", ".");
             esBulkIndexService.index(indexName, entity.getTraceId(), entity);
         } catch (Exception e) {

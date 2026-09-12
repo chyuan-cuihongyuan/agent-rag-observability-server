@@ -3,6 +3,7 @@ package cn.chyuan.ai.observability.infrastructure.es.repository;
 import cn.chyuan.ai.observability.domain.observe.adapter.repository.IMemoryRecallLogRepository;
 import cn.chyuan.ai.observability.domain.observe.model.entity.MemoryRecallLogEntity;
 import cn.chyuan.ai.observability.infrastructure.dao.repository.MysqlLogRepository;
+import cn.chyuan.ai.observability.infrastructure.es.attributes.OtelAttributeMapper;
 import cn.chyuan.ai.observability.infrastructure.es.bulk.EsBulkIndexService;
 import cn.chyuan.ai.observability.infrastructure.metrics.ObserveMetrics;
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
@@ -40,6 +41,7 @@ public class EsMemoryRecallLogRepository implements IMemoryRecallLogRepository {
     @Override
     public void save(MemoryRecallLogEntity entity) {
         try {
+            entity.setOtelAttributes(OtelAttributeMapper.fromMemoryRecall(entity));
             String indexName = INDEX_PREFIX + "-" + entity.getCreateTime().substring(0, 7).replace("-", ".");
             esBulkIndexService.index(indexName, entity.getTraceId(), entity);
         } catch (Exception e) {

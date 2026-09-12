@@ -1,6 +1,9 @@
 package cn.chyuan.ai.observability.infrastructure.es.attributes;
 
+import cn.chyuan.ai.observability.domain.observe.model.entity.AgentDecisionEntity;
 import cn.chyuan.ai.observability.domain.observe.model.entity.ChatResultEntity;
+import cn.chyuan.ai.observability.domain.observe.model.entity.MemoryRecallLogEntity;
+import cn.chyuan.ai.observability.domain.observe.model.entity.RagRetrievalEntity;
 import cn.chyuan.ai.observability.domain.observe.model.entity.ToolCallLogEntity;
 import org.junit.jupiter.api.Test;
 
@@ -51,5 +54,33 @@ class OtelAttributeMapperTest {
                 .containsOnlyKeys(OtelTraceAttributes.GEN_AI_OPERATION_NAME);
         assertThat(OtelAttributeMapper.fromChatResult(new ChatResultEntity()))
                 .containsOnlyKeys(OtelTraceAttributes.GEN_AI_OPERATION_NAME);
+        assertThat(OtelAttributeMapper.fromRagRetrieval(new RagRetrievalEntity()))
+                .containsOnlyKeys(OtelTraceAttributes.GEN_AI_OPERATION_NAME);
+        assertThat(OtelAttributeMapper.fromAgentDecision(new AgentDecisionEntity()))
+                .containsOnlyKeys(OtelTraceAttributes.GEN_AI_OPERATION_NAME);
+        assertThat(OtelAttributeMapper.fromMemoryRecall(new MemoryRecallLogEntity()))
+                .containsOnlyKeys(OtelTraceAttributes.GEN_AI_OPERATION_NAME);
+    }
+
+    @Test
+    void mapsRagRetrievalAndDecisionAndMemory() {
+        RagRetrievalEntity retrieval = RagRetrievalEntity.builder()
+                .traceId("t-3").retrievalTopk(5).retrievalCount(5).emptyRetrieval(1).build();
+        assertThat(OtelAttributeMapper.fromRagRetrieval(retrieval))
+                .containsEntry("gen_ai.retrieval.topk", "5")
+                .containsEntry(OtelTraceAttributes.ERROR_TYPE, "empty_retrieval");
+
+        AgentDecisionEntity decision = AgentDecisionEntity.builder()
+                .traceId("t-4").modelVersion("glm-4").intentType("qa")
+                .branchType("rag").toolRetryTimes(2).build();
+        assertThat(OtelAttributeMapper.fromAgentDecision(decision))
+                .containsEntry(OtelTraceAttributes.GEN_AI_REQUEST_MODEL, "glm-4")
+                .containsEntry("gen_ai.agent.intent", "qa")
+                .containsEntry(OtelTraceAttributes.ERROR_TYPE, "tool_retry");
+
+        MemoryRecallLogEntity memory = MemoryRecallLogEntity.builder()
+                .traceId("t-5").sessionMemoryScores(java.util.List.of(0.31, 0.87)).build();
+        assertThat(OtelAttributeMapper.fromMemoryRecall(memory))
+                .containsEntry("gen_ai.memory.top_score", "0.87");
     }
 }

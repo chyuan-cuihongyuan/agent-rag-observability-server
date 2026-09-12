@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.io.Serializable;
+import java.util.Map;
 import java.util.List;
 
 /**
@@ -27,4 +28,6 @@ public class MemoryRecallLogEntity implements Serializable {
     private String injectContent;
     private Integer costTimeMs;
     private String createTime;
+    /** OTel GenAI 语义约定附加属性（服务端派生，ES 文档附加字段） */
+    private Map<String, String> otelAttributes;
 }
