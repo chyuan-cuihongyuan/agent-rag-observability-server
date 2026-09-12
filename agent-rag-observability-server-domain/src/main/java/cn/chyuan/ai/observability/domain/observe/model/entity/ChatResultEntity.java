@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.io.Serializable;
+import java.util.Map;
 
 @Data
 @Builder
@@ -26,4 +27,6 @@ public class ChatResultEntity implements Serializable {
     private String finalStatus;
     private String modelVersion;
     private String createTime;
+    /** OTel GenAI 语义约定附加属性（服务端派生，ES 文档附加字段） */
+    private Map<String, String> otelAttributes;
 }

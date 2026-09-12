@@ -3,6 +3,7 @@ package cn.chyuan.ai.observability.infrastructure.es.repository;
 import cn.chyuan.ai.observability.domain.observe.adapter.repository.IToolCallLogRepository;
 import cn.chyuan.ai.observability.domain.observe.model.entity.ToolCallLogEntity;
 import cn.chyuan.ai.observability.infrastructure.dao.repository.MysqlLogRepository;
+import cn.chyuan.ai.observability.infrastructure.es.attributes.OtelAttributeMapper;
 import cn.chyuan.ai.observability.infrastructure.es.bulk.EsBulkIndexService;
 import cn.chyuan.ai.observability.infrastructure.metrics.ObserveMetrics;
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
@@ -41,6 +42,7 @@ public class EsToolCallLogRepository implements IToolCallLogRepository {
     @Override
     public void save(ToolCallLogEntity entity) {
         try {
+            entity.setOtelAttributes(OtelAttributeMapper.fromToolCall(entity));
             String indexName = INDEX_PREFIX + "-" + entity.getCreateTime().substring(0, 7).replace("-", ".");
             // 文档 ID：traceId + spanId，spanId 为空时使用序号避免覆盖
             String docId = entity.getTraceId() + "_" + (entity.getSpanId() != null ? entity.getSpanId() : UUID.randomUUID());
