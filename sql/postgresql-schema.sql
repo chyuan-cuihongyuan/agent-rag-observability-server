@@ -798,3 +798,19 @@ CREATE TABLE IF NOT EXISTS asset_schema_change (
 );
 COMMENT ON TABLE asset_schema_change IS '资产 schema 变更（AK5：ADDED/REMOVED/TYPE_CHANGED/NULLABLE_CHANGED）';
 CREATE INDEX IF NOT EXISTS idx_schema_change_asset ON asset_schema_change (asset_urn, at_ms);
+
+-- 31. 通知表（工单 0293 AL1：事件通知中心，状态机 + 指纹去重）
+CREATE TABLE IF NOT EXISTS notification (
+    id          VARCHAR(64)  PRIMARY KEY,
+    event_type  VARCHAR(64)  NOT NULL,
+    severity    VARCHAR(16)  NOT NULL,
+    title       VARCHAR(256) NOT NULL,
+    payload_json TEXT,
+    fingerprint VARCHAR(256),
+    subscriber  VARCHAR(128) NOT NULL,
+    status      VARCHAR(16)  NOT NULL DEFAULT 'PENDING',
+    created_at_ms BIGINT     NOT NULL,
+    update_time TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+COMMENT ON TABLE notification IS '通知中心（AL1：PENDING/SENT/FAILED/SUPPRESSED/DIGESTED/DEDUPED；INBOX 渠道落库）';
+CREATE INDEX IF NOT EXISTS idx_notification_subscriber ON notification (subscriber, status);

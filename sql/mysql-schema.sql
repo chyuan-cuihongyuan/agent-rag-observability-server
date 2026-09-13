@@ -589,3 +589,18 @@ CREATE TABLE IF NOT EXISTS asset_schema_change (
   update_time DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   KEY idx_schema_change_asset (asset_urn, at_ms)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='资产 schema 变更（工单 0289 AK5）';
+
+-- 31. 通知表（工单 0293 AL1）
+CREATE TABLE IF NOT EXISTS notification (
+  id          VARCHAR(64)  NOT NULL PRIMARY KEY COMMENT '通知 id',
+  event_type  VARCHAR(64)  NOT NULL COMMENT '事件类型',
+  severity    VARCHAR(16)  NOT NULL COMMENT 'INFO/WARNING/CRITICAL',
+  title       VARCHAR(256) NOT NULL COMMENT '标题',
+  payload_json TEXT        NULL COMMENT '载荷 JSON',
+  fingerprint VARCHAR(256) NULL COMMENT '幂等指纹',
+  subscriber  VARCHAR(128) NOT NULL COMMENT '订阅者',
+  status      VARCHAR(16)  NOT NULL DEFAULT 'PENDING' COMMENT 'PENDING/SENT/FAILED/SUPPRESSED/DIGESTED/DEDUPED',
+  created_at_ms BIGINT     NOT NULL COMMENT '创建时间毫秒',
+  update_time DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  KEY idx_notification_subscriber (subscriber, status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='通知中心（工单 0293 AL1）';
