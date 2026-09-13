@@ -538,3 +538,54 @@ CREATE TABLE IF NOT EXISTS sla_miss (
   detected_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   KEY idx_sla_miss_task (task, detected_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='SLA 错过记录（工单 0223 AD4）';
+
+-- 27. 资产实体表（工单 0285 AK1）
+CREATE TABLE IF NOT EXISTS asset_entity (
+  id          BIGINT AUTO_INCREMENT PRIMARY KEY,
+  urn         VARCHAR(256) NOT NULL COMMENT '统一 URN',
+  type        VARCHAR(32)  NOT NULL COMMENT 'dataset/job/model',
+  qualifier   VARCHAR(256) NOT NULL COMMENT '限定符',
+  display_name VARCHAR(256) NULL COMMENT '显示名',
+  owner       VARCHAR(64)  NULL COMMENT '负责人',
+  note        VARCHAR(512) NULL COMMENT '备注',
+  update_time DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_asset_entity_urn (urn)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='资产实体（工单 0285 AK1）';
+
+-- 28. 血缘边表（工单 0286 AK2）
+CREATE TABLE IF NOT EXISTS lineage_edge (
+  id          BIGINT AUTO_INCREMENT PRIMARY KEY,
+  from_urn    VARCHAR(256) NOT NULL COMMENT '上游资产',
+  to_urn      VARCHAR(256) NOT NULL COMMENT '下游资产',
+  source      VARCHAR(16)  NOT NULL DEFAULT 'manual' COMMENT 'manual/auto',
+  update_time DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_lineage_edge (from_urn, to_urn, source)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='血缘边（工单 0286 AK2）';
+
+-- 29. 血缘运行表（工单 0287 AK3）
+CREATE TABLE IF NOT EXISTS lineage_run (
+  id          BIGINT AUTO_INCREMENT PRIMARY KEY,
+  event_key   VARCHAR(256) NOT NULL COMMENT '事件幂等键',
+  event_type  VARCHAR(32)  NOT NULL COMMENT 'RUN_START/COMPLETE/FAIL',
+  job_urn     VARCHAR(256) NOT NULL COMMENT '作业 URN',
+  inputs_json TEXT         NULL COMMENT '输入 URN JSON 数组',
+  outputs_json TEXT        NULL COMMENT '输出 URN JSON 数组',
+  at_ms       BIGINT       NOT NULL COMMENT '事件时间毫秒',
+  error       VARCHAR(512) NULL COMMENT '失败原因',
+  update_time DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_lineage_run_event (event_key)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='血缘运行（工单 0287 AK3）';
+
+-- 30. 资产 schema 变更表（工单 0289 AK5）
+CREATE TABLE IF NOT EXISTS asset_schema_change (
+  id          BIGINT AUTO_INCREMENT PRIMARY KEY,
+  asset_urn   VARCHAR(256) NOT NULL COMMENT '资产 URN',
+  at_ms       BIGINT       NOT NULL COMMENT '变更时间毫秒',
+  field       VARCHAR(128) NOT NULL COMMENT '字段名',
+  change      VARCHAR(32)  NOT NULL COMMENT 'ADDED/REMOVED/TYPE_CHANGED/NULLABLE_CHANGED',
+  before      VARCHAR(128) NULL COMMENT '变更前',
+  after       VARCHAR(128) NULL COMMENT '变更后',
+  breaking    TINYINT      NOT NULL DEFAULT 0 COMMENT '破坏性 0/1',
+  update_time DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  KEY idx_schema_change_asset (asset_urn, at_ms)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='资产 schema 变更（工单 0289 AK5）';

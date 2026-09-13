@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="cn.chyuan.ai.observability.infrastructure.dao.ILineageDao">
+
+    <!-- 资产（第 27 表） -->
+    <insert id="insertAsset">
+        INSERT INTO asset_entity (urn, type, qualifier, display_name, owner, note, update_time)
+        VALUES (#{urn}, #{type}, #{qualifier}, #{displayName}, #{owner}, #{note}, CURRENT_TIMESTAMP)
+    </insert>
+
+    <select id="selectAssetByUrn" resultType="map">
+        SELECT urn, type, qualifier, display_name AS displayName, owner, note
+        FROM asset_entity WHERE urn = #{urn}
+    </select>
+
+    <select id="selectAssets" resultType="map">
+        SELECT urn, type, qualifier, display_name AS displayName, owner, note
+        FROM asset_entity ORDER BY urn
+    </select>
+
+    <!-- 血缘边（第 28 表） -->
+    <insert id="insertEdge">
+        INSERT INTO lineage_edge (from_urn, to_urn, source, update_time)
+        VALUES (#{fromUrn}, #{toUrn}, #{source}, CURRENT_TIMESTAMP)
+    </insert>
+
+    <select id="selectEdge" resultType="map">
+        SELECT id, from_urn AS fromUrn, to_urn AS toUrn, source
+        FROM lineage_edge
+        WHERE from_urn = #{fromUrn} AND to_urn = #{toUrn} AND source = #{source}
+        LIMIT 1
+    </select>
+
+    <select id="selectEdges" resultType="map">
+        SELECT id, from_urn AS fromUrn, to_urn AS toUrn, source
+        FROM lineage_edge ORDER BY from_urn, to_urn
+    </select>
+
+    <!-- 血缘运行（第 29 表） -->
+    <insert id="insertRun">
+        INSERT INTO lineage_run (event_key, event_type, job_urn, inputs_json, outputs_json, at_ms, error, update_time)
+        VALUES (#{eventKey}, #{eventType}, #{jobUrn}, #{inputsJson}, #{outputsJson}, #{atMs}, #{error}, CURRENT_TIMESTAMP)
+    </insert>
+
+    <select id="selectRunByEventKey" resultType="map">
+        SELECT id, event_key AS eventKey, event_type AS eventType, job_urn AS jobUrn
+        FROM lineage_run WHERE event_key = #{eventKey}
+    </select>
+
+    <!-- schema 变更（第 30 表） -->
+    <insert id="insertSchemaChange">
+        INSERT INTO asset_schema_change (asset_urn, at_ms, field, change, before, after, breaking, update_time)
+        VALUES (#{assetUrn}, #{atMs}, #{field}, #{change}, #{before}, #{after}, #{breaking}, CURRENT_TIMESTAMP)
+    </insert>
+
+    <select id="selectSchemaChangesByAsset" resultType="map">
+        SELECT id, asset_urn AS assetUrn, at_ms AS atMs, field, change, before, after, breaking
+        FROM asset_schema_change WHERE asset_urn = #{assetUrn} ORDER BY at_ms DESC, id DESC
+    </select>
+
+    <select id="selectSchemaChanges" resultType="map">
+        SELECT id, asset_urn AS assetUrn, at_ms AS atMs, field, change, before, after, breaking
+        FROM asset_schema_change ORDER BY at_ms DESC, id DESC
+    </select>
+</mapper>

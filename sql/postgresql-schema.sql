@@ -743,3 +743,58 @@ CREATE TABLE IF NOT EXISTS sla_miss (
 );
 COMMENT ON TABLE sla_miss IS 'SLA 错过记录（AD4：调度任务超预计完成时长）';
 CREATE INDEX IF NOT EXISTS idx_sla_miss_task ON sla_miss (task, detected_at);
+
+-- 27. 资产实体表（工单 0285 AK1：dataset/job/model 统一 URN 注册）
+CREATE TABLE IF NOT EXISTS asset_entity (
+    id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    urn         VARCHAR(256) NOT NULL,
+    type        VARCHAR(32)  NOT NULL,
+    qualifier   VARCHAR(256) NOT NULL,
+    display_name VARCHAR(256),
+    owner       VARCHAR(64),
+    note        VARCHAR(512),
+    update_time TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uk_asset_entity_urn UNIQUE (urn)
+);
+COMMENT ON TABLE asset_entity IS '资产实体（AK1：URN 全局唯一身份）';
+
+-- 28. 血缘边表（工单 0286 AK2：表级上下游邻接，manual|auto 来源）
+CREATE TABLE IF NOT EXISTS lineage_edge (
+    id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    from_urn    VARCHAR(256) NOT NULL,
+    to_urn      VARCHAR(256) NOT NULL,
+    source      VARCHAR(16)  NOT NULL DEFAULT 'manual',
+    update_time TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uk_lineage_edge UNIQUE (from_urn, to_urn, source)
+);
+COMMENT ON TABLE lineage_edge IS '血缘边（AK2：auto 来源由 RUN_COMPLETE 事件幂等补边）';
+
+-- 29. 血缘运行表（工单 0287 AK3：run 事件留档，event_key 幂等）
+CREATE TABLE IF NOT EXISTS lineage_run (
+    id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    event_key   VARCHAR(256) NOT NULL,
+    event_type  VARCHAR(32)  NOT NULL,
+    job_urn     VARCHAR(256) NOT NULL,
+    inputs_json TEXT,
+    outputs_json TEXT,
+    at_ms       BIGINT       NOT NULL,
+    error       VARCHAR(512),
+    update_time TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uk_lineage_run_event UNIQUE (event_key)
+);
+COMMENT ON TABLE lineage_run IS '血缘运行（AK3：RUN_START/COMPLETE/FAIL 事件，OpenLineage run 模型思想）';
+
+-- 30. 资产 schema 变更表（工单 0289 AK5：字段级变更时间线，破坏性标记）
+CREATE TABLE IF NOT EXISTS asset_schema_change (
+    id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    asset_urn   VARCHAR(256) NOT NULL,
+    at_ms       BIGINT       NOT NULL,
+    field       VARCHAR(128) NOT NULL,
+    change      VARCHAR(32)  NOT NULL,
+    before      VARCHAR(128),
+    after       VARCHAR(128),
+    breaking    BOOLEAN      NOT NULL DEFAULT FALSE,
+    update_time TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+COMMENT ON TABLE asset_schema_change IS '资产 schema 变更（AK5：ADDED/REMOVED/TYPE_CHANGED/NULLABLE_CHANGED）';
+CREATE INDEX IF NOT EXISTS idx_schema_change_asset ON asset_schema_change (asset_urn, at_ms);
