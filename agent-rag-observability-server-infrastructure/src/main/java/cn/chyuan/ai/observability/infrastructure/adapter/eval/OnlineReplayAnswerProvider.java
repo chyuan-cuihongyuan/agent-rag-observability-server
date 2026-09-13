@@ -63,7 +63,13 @@ public class OnlineReplayAnswerProvider implements IAnswerSourceProvider {
 
             cn.chyuan.ai.observability.domain.support.TimeSource.Started timer =
                     cn.chyuan.ai.observability.domain.support.TimeSource.started();
-            Response response = httpClient.newCall(request).execute();
+            // SELFLOOP2 loop-251：让 observability.eval.provider.online.timeout 配置真正生效
+            // （此前仅声明未使用）。OkHttp 5：per-call 超时经 newBuilder().callTimeout 实现，
+            // 覆盖整个调用（连接+读取），client 级三超时保留兜底
+            okhttp3.OkHttpClient scopedClient = httpClient.newBuilder()
+                    .callTimeout(timeoutSeconds, java.util.concurrent.TimeUnit.SECONDS)
+                    .build();
+            Response response = scopedClient.newCall(request).execute();
             long costMs = timer.elapsedMillis();
 
             if (!response.isSuccessful()) {
