@@ -69,7 +69,7 @@ public class EvalExecutionService {
      */
     public void execute(EvalTaskEntity task) {
         String taskId = task.getTaskId();
-        long startMs = System.currentTimeMillis();
+        cn.chyuan.ai.observability.domain.support.TimeSource.Started timer = cn.chyuan.ai.observability.domain.support.TimeSource.started();
         try {
             List<EvalDatasetItem> items = loadDatasetItems(task.getDatasetId());
             if (items.isEmpty()) {
@@ -111,7 +111,7 @@ public class EvalExecutionService {
             evalTaskRepository.updateProgress(taskId, completed, round(avgOverall));
             evalTaskRepository.updateStatus(taskId, "COMPLETED");
             evalMetricsPort.recordTaskFinished(evalType, "COMPLETED");
-            evalMetricsPort.recordTaskDuration(evalType, System.currentTimeMillis() - startMs);
+            evalMetricsPort.recordTaskDuration(evalType, timer.elapsedMillis());
             log.info("评测任务完成, taskId={}, 条目={}, 平均综合分={}", taskId, total, round(avgOverall));
         } catch (Exception e) {
             log.error("评测任务执行失败, taskId={}", taskId, e);

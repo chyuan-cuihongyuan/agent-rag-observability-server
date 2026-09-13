@@ -61,9 +61,10 @@ public class OnlineReplayAnswerProvider implements IAnswerSourceProvider {
                     .addHeader("Content-Type", "application/json")
                     .build();
 
-            long start = System.currentTimeMillis();
+            cn.chyuan.ai.observability.domain.support.TimeSource.Started timer =
+                    cn.chyuan.ai.observability.domain.support.TimeSource.started();
             Response response = httpClient.newCall(request).execute();
-            long costMs = System.currentTimeMillis() - start;
+            long costMs = timer.elapsedMillis();
 
             if (!response.isSuccessful()) {
                 log.warn("在线回放失败, query={}, code={}", query, response.code());
