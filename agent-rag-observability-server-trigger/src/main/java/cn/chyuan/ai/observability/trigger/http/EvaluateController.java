@@ -7,10 +7,12 @@ import cn.chyuan.ai.observability.domain.evaluate.model.entity.EvalDatasetEntity
 import cn.chyuan.ai.observability.domain.evaluate.model.entity.EvalResultEntity;
 import cn.chyuan.ai.observability.domain.evaluate.model.entity.EvalTaskEntity;
 import cn.chyuan.ai.observability.domain.evaluate.service.EvaluateService;
+import cn.chyuan.ai.observability.domain.evaluate.service.EvalCsvExporter;
 import cn.chyuan.ai.observability.types.response.Response;
 import cn.chyuan.ai.observability.types.response.ResponseCode;
 import cn.chyuan.ai.observability.trigger.http.support.RequestValidator;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
@@ -24,9 +26,11 @@ import java.util.Map;
 public class EvaluateController {
 
     private final EvaluateService evaluateService;
+    private final EvalCsvExporter evalCsvExporter;
 
-    public EvaluateController(EvaluateService evaluateService) {
+    public EvaluateController(EvaluateService evaluateService, EvalCsvExporter evalCsvExporter) {
         this.evaluateService = evaluateService;
+        this.evalCsvExporter = evalCsvExporter;
     }
 
     @PostMapping("/dataset")
@@ -163,6 +167,26 @@ public class EvaluateController {
             return Response.fail(ResponseCode.ILLEGAL_PARAMETER, validationError);
         }
         return Response.success(evaluateService.compareResults(task1, task2));
+    }
+
+    /**
+     * 评测结果 CSV 导出 — judge 人审抽样（SELFLOOP3 loop-313，工单 0424/0425）。
+     * maxRows 默认 500、上限 2000（导出器内 clamp）；UTF-8 BOM 兼容 Excel 中文。
+     */
+    @GetMapping("/task/{taskId}/export")
+    public ResponseEntity<byte[]> exportTaskCsv(@PathVariable String taskId,
+                                                @RequestParam(defaultValue = "500") int maxRows) {
+        String validationError = RequestValidator.validateId("taskId", taskId);
+        if (validationError != null) {
+            return ResponseEntity.badRequest().body(validationError.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        }
+        String csv = evalCsvExporter.export(taskId, maxRows);
+        // BOM 头：Excel 直接打开中文不乱码
+        byte[] body = ('\ufeff' + csv).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        return ResponseEntity.ok()
+                .header("Content-Disposition", "attachment; filename=eval_" + taskId + ".csv")
+                .contentType(org.springframework.http.MediaType.parseMediaType("text/csv;charset=UTF-8"))
+                .body(body);
     }
 
     /**
