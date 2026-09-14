@@ -50,6 +50,7 @@ public class EvaluateService {
         entity.setCompletedCount(entity.getCompletedCount() == null ? 0 : entity.getCompletedCount());
         entity.setModelVersion(entity.getModelVersion() == null ? "" : entity.getModelVersion());
         entity.setRagStrategyVersion(entity.getRagStrategyVersion() == null ? "" : entity.getRagStrategyVersion());
+        entity.setDatasetContentHash(currentDatasetHash(entity.getDatasetId()));
         entity.setCreateTime(LocalDateTime.now().format(FMT));
         entity.setUpdateTime(LocalDateTime.now().format(FMT));
         evalTaskRepository.save(entity);
@@ -109,6 +110,7 @@ public class EvaluateService {
         if (task == null) {
             return;
         }
+        warnIfDatasetDrifted(task);
         if (!evalConcurrencyGuard.tryAcquire()) {
             log.warn("评测并发已满，任务直接拒绝: taskId={}", taskId);
             evalTaskRepository.updateStatus(taskId, "FAILED");
@@ -121,6 +123,40 @@ public class EvaluateService {
             evalTaskRepository.updateStatus(taskId, "FAILED");
         } finally {
             evalConcurrencyGuard.release();
+        }
+    }
+
+    /** 当前数据集内容哈希（SELFLOOP3 loop-334，工单 0466/0467；Phoenix datasets 快照思想） */
+    private String currentDatasetHash(String datasetId) {
+        if (datasetId == null || datasetId.isBlank()) {
+            return "";
+        }
+        EvalDatasetEntity dataset = evalDatasetRepository.queryByDatasetId(datasetId);
+        return dataset != null ? contentHash(dataset.getItemsJson()) : "";
+    }
+
+    /** 数据集漂移检测：任务建立即快照，复跑时内容已变则 warn（可观测不阻断） */
+    private void warnIfDatasetDrifted(EvalTaskEntity task) {
+        String recorded = task.getDatasetContentHash();
+        if (recorded == null || recorded.isBlank()) {
+            return; // 存量任务无快照，跳过
+        }
+        String current = currentDatasetHash(task.getDatasetId());
+        if (!recorded.equals(current)) {
+            log.warn("评测数据集版本漂移: taskId={} datasetId={} 建立时快照={} 当前={}",
+                    task.getTaskId(), task.getDatasetId(), recorded.substring(0, 8), current.substring(0, 8));
+        }
+    }
+
+    /** 内容哈希纯函数（测试可见）：null 视为空串，SHA-256 十六进制 */
+    static String contentHash(String itemsJson) {
+        String base = itemsJson == null ? "" : itemsJson;
+        try {
+            java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
+            byte[] digest = md.digest(base.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            return java.util.HexFormat.of().formatHex(digest);
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 unavailable", e);
         }
     }
 

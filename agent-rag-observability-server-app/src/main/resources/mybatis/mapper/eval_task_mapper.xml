@@ -4,26 +4,26 @@
 
     <insert id="insert" parameterType="cn.chyuan.ai.observability.infrastructure.dao.po.EvalTaskPO" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO eval_task (task_id, task_name, eval_type, dataset_id, status, total_count, completed_count,
-                              model_version, rag_strategy_version, avg_overall_score, create_time, update_time)
+                              model_version, rag_strategy_version, avg_overall_score, dataset_content_hash, create_time, update_time)
         VALUES (#{taskId}, #{taskName}, #{evalType}, #{datasetId}, #{status}, #{totalCount}, #{completedCount},
-                #{modelVersion}, #{ragStrategyVersion}, #{avgOverallScore}, #{createTime}, #{updateTime})
+                #{modelVersion}, #{ragStrategyVersion}, #{avgOverallScore}, #{datasetContentHash}, #{createTime}, #{updateTime})
     </insert>
 
     <select id="selectByTaskId" resultType="cn.chyuan.ai.observability.infrastructure.dao.po.EvalTaskPO">
         SELECT id, task_id, task_name, eval_type, dataset_id, status, total_count, completed_count,
-               model_version, rag_strategy_version, avg_overall_score, create_time, update_time
+               model_version, rag_strategy_version, avg_overall_score, dataset_content_hash, create_time, update_time
         FROM eval_task WHERE task_id = #{taskId}
     </select>
 
     <select id="selectList" resultType="cn.chyuan.ai.observability.infrastructure.dao.po.EvalTaskPO">
         SELECT id, task_id, task_name, eval_type, dataset_id, status, total_count, completed_count,
-               model_version, rag_strategy_version, avg_overall_score, create_time, update_time
+               model_version, rag_strategy_version, avg_overall_score, dataset_content_hash, create_time, update_time
         FROM eval_task ORDER BY create_time DESC LIMIT #{offset}, #{size}
     </select>
 
     <select id="selectRecentCompleted" resultType="cn.chyuan.ai.observability.infrastructure.dao.po.EvalTaskPO">
         SELECT id, task_id, task_name, eval_type, dataset_id, status, total_count, completed_count,
-               model_version, rag_strategy_version, avg_overall_score, create_time, update_time
+               model_version, rag_strategy_version, avg_overall_score, dataset_content_hash, create_time, update_time
         FROM eval_task WHERE status = 'COMPLETED' ORDER BY update_time DESC LIMIT #{limit}
     </select>
 

@@ -23,6 +23,7 @@ public class EvalTaskPO implements Serializable {
     private String modelVersion;
     private String ragStrategyVersion;
     private Double avgOverallScore;
+    private String datasetContentHash;
     private String createTime;
     private String updateTime;
 }

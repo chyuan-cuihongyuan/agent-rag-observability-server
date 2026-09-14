@@ -23,6 +23,8 @@ public class EvalTaskEntity implements Serializable {
     private String modelVersion;
     private String ragStrategyVersion;
     private Double avgOverallScore;
+    /** 数据集内容快照哈希（Phoenix datasets 思想，版本漂移检测；SELFLOOP3 loop-334，工单 0466/0467） */
+    private String datasetContentHash;
     private String createTime;
     private String updateTime;
 }
