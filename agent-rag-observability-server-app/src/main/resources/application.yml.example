@@ -26,6 +26,15 @@ spring:
     redis:
       host: ${REDIS_HOST:<your-host>}
       port: ${REDIS_PORT:6379}
+  # b-44：LLM 调用重试显性化（覆盖 spring-ai 默认 max-attempts 10、退避
+  # 上限 3min——对用户面调用过激）；3 次 + 2s→10s 封顶。同步 application-dev.yml 本地面
+  ai:
+    retry:
+      max-attempts: 3
+      backoff:
+        initial-interval: 2000
+        multiplier: 2
+        max-interval: 10000
 
 mybatis:
   mapper-locations: classpath:/mybatis/mapper/*.xml
