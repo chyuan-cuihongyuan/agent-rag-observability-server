@@ -29,6 +29,15 @@ public class TraceMessageConsumer implements RocketMQListener<String> {
     @Resource
     private ObserveCollectService observeCollectService;
 
+    @Resource
+    private cn.chyuan.ai.observability.infrastructure.metrics.ObserveMetrics observeMetrics;
+
+    /** 指标缺席时 no-op（测试/禁用场景防 NPE，对齐 SessionManagementService 模式） */
+    private cn.chyuan.ai.observability.infrastructure.metrics.ObserveMetrics metrics() {
+        return observeMetrics != null ? observeMetrics
+                : new cn.chyuan.ai.observability.infrastructure.metrics.ObserveMetrics();
+    }
+
     @Override
     public void onMessage(String message) {
         String tag = extractTag(message);
@@ -61,11 +70,14 @@ public class TraceMessageConsumer implements RocketMQListener<String> {
                 }
                 default -> log.warn("unknown trace message type: {}", tag);
             }
+            metrics().recordMqConsumed("success");
         } catch (Exception e) {
             log.error("consume trace message error, tag={}, traceId={}", tag, traceId, e);
+            metrics().recordMqConsumed("failure");
             // 上抛异常让 RocketMQ 感知消费失败，触发重试，超限后进入死信队列
             throw new RuntimeException(e);
         } finally {
+            metrics().recordMqHeartbeat();
             MDC.remove(MDC_TRACE_ID);
         }
     }

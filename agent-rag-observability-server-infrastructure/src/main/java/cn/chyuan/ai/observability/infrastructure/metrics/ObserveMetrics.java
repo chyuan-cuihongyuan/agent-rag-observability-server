@@ -6,10 +6,13 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 
 @Slf4j
 @Component
 public class ObserveMetrics {
+
+    private final java.util.concurrent.atomic.AtomicLong mqLastConsumedEpochMs = new java.util.concurrent.atomic.AtomicLong();
 
     @Resource
     private MeterRegistry meterRegistry;
@@ -88,6 +91,26 @@ public class ObserveMetrics {
     /**
      * 记录写入失败（ES / MySQL / 线程池拒绝等）
      */
+    /** MQ 消费计数（SELFLOOP3 loop-336，工单 0470/0471）：outcome=success/failure；registry 缺席时 no-op */
+    public void recordMqConsumed(String outcome) {
+        if (meterRegistry == null) {
+            return;
+        }
+        Counter.builder("observe_mq_consumed_total")
+                .tag("outcome", outcome == null ? "unknown" : outcome)
+                .register(meterRegistry).increment();
+    }
+
+    /** MQ 最近消费时间戳（epoch ms）：消费停摆告警的锚点（now - last 持续增大即停摆）；registry 缺席时仅推进时间戳 */
+    public void recordMqHeartbeat() {
+        if (meterRegistry != null) {
+            Gauge.builder("observe_mq_last_consumed_epoch_ms",
+                            mqLastConsumedEpochMs, AtomicLong::get)
+                    .register(meterRegistry);
+        }
+        mqLastConsumedEpochMs.set(System.currentTimeMillis());
+    }
+
     public void recordWriteFailure(String store) {
         Counter.builder("observe_write_fail_total")
                 .tag("store", store)
