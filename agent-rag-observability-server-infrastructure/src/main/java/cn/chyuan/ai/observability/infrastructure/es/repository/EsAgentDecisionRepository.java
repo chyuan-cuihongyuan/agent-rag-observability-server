@@ -2,6 +2,7 @@ package cn.chyuan.ai.observability.infrastructure.es.repository;
 
 import cn.chyuan.ai.observability.domain.observe.adapter.repository.IAgentDecisionRepository;
 import cn.chyuan.ai.observability.domain.observe.model.entity.AgentDecisionEntity;
+import cn.chyuan.ai.observability.infrastructure.es.support.EsQueryTimer;
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
 import co.elastic.clients.elasticsearch._types.query_dsl.Query;
 import co.elastic.clients.elasticsearch.core.IndexRequest;
@@ -29,6 +30,9 @@ public class EsAgentDecisionRepository implements IAgentDecisionRepository {
 
     @Resource
     private ElasticsearchClient esClient;
+
+    @Resource
+    private EsQueryTimer esQueryTimer;
 
     @Resource
     private MysqlLogRepository mysqlLogRepository;
@@ -60,10 +64,10 @@ public class EsAgentDecisionRepository implements IAgentDecisionRepository {
     @Override
     public AgentDecisionEntity queryByTraceId(String traceId) {
         try {
-            SearchResponse<AgentDecisionEntity> response = esClient.search(s -> s
+            SearchResponse<AgentDecisionEntity> response = esQueryTimer.timed("agent_decision_by_trace", () -> esClient.search(s -> s
                     .index(INDEX_PREFIX + "*")
                     .query(q -> q.term(t -> t.field("traceId").value(traceId)))
-                    .size(1), AgentDecisionEntity.class);
+                    .size(1), AgentDecisionEntity.class));
             return response.hits().hits().isEmpty() ? null : response.hits().hits().get(0).source();
         } catch (Exception e) {
             log.error("ES query agent decision error, traceId={}", traceId, e);

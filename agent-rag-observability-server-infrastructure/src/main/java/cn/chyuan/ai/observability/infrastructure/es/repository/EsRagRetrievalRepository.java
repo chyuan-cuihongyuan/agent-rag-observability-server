@@ -2,6 +2,7 @@ package cn.chyuan.ai.observability.infrastructure.es.repository;
 
 import cn.chyuan.ai.observability.domain.observe.adapter.repository.IRagRetrievalRepository;
 import cn.chyuan.ai.observability.domain.observe.model.entity.RagRetrievalEntity;
+import cn.chyuan.ai.observability.infrastructure.es.support.EsQueryTimer;
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
 import co.elastic.clients.elasticsearch.core.SearchResponse;
 import co.elastic.clients.elasticsearch.core.search.Hit;
@@ -23,6 +24,9 @@ public class EsRagRetrievalRepository implements IRagRetrievalRepository {
 
     @Resource
     private ElasticsearchClient esClient;
+
+    @Resource
+    private EsQueryTimer esQueryTimer;
 
     @Resource
     private MysqlLogRepository mysqlLogRepository;
@@ -55,10 +59,10 @@ public class EsRagRetrievalRepository implements IRagRetrievalRepository {
     @Override
     public RagRetrievalEntity queryByTraceId(String traceId) {
         try {
-            SearchResponse<RagRetrievalEntity> response = esClient.search(s -> s
+            SearchResponse<RagRetrievalEntity> response = esQueryTimer.timed("rag_retrieval_by_trace", () -> esClient.search(s -> s
                     .index(INDEX_PREFIX + "*")
                     .query(q -> q.term(t -> t.field("traceId").value(traceId)))
-                    .size(1), RagRetrievalEntity.class);
+                    .size(1), RagRetrievalEntity.class));
             return response.hits().hits().isEmpty() ? null : response.hits().hits().get(0).source();
         } catch (Exception e) {
             log.error("ES query rag retrieval error, traceId={}", traceId, e);

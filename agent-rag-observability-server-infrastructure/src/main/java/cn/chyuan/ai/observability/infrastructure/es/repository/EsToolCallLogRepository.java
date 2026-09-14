@@ -6,6 +6,7 @@ import cn.chyuan.ai.observability.infrastructure.dao.repository.MysqlLogReposito
 import cn.chyuan.ai.observability.infrastructure.es.attributes.OtelAttributeMapper;
 import cn.chyuan.ai.observability.infrastructure.es.bulk.EsBulkIndexService;
 import cn.chyuan.ai.observability.infrastructure.metrics.ObserveMetrics;
+import cn.chyuan.ai.observability.infrastructure.es.support.EsQueryTimer;
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
 import co.elastic.clients.elasticsearch.core.SearchResponse;
 import co.elastic.clients.elasticsearch.core.search.Hit;
@@ -29,6 +30,9 @@ public class EsToolCallLogRepository implements IToolCallLogRepository {
 
     @Resource
     private ElasticsearchClient esClient;
+
+    @Resource
+    private EsQueryTimer esQueryTimer;
 
     @Resource
     private EsBulkIndexService esBulkIndexService;
@@ -57,12 +61,12 @@ public class EsToolCallLogRepository implements IToolCallLogRepository {
     @Override
     public List<ToolCallLogEntity> queryByTraceId(String traceId) {
         try {
-            SearchResponse<ToolCallLogEntity> response = esClient.search(s -> s
+            SearchResponse<ToolCallLogEntity> response = esQueryTimer.timed("tool_call_log_by_trace", () -> esClient.search(s -> s
                     .index(INDEX_PREFIX + "*")
                     .query(q -> q.term(t -> t.field("traceId").value(traceId)))
                     .size(100)
                     .sort(so -> so.field(f -> f.field("callOrder").order(co.elastic.clients.elasticsearch._types.SortOrder.Asc))),
-                    ToolCallLogEntity.class);
+                    ToolCallLogEntity.class));
             return response.hits().hits().stream().map(Hit::source).collect(Collectors.toList());
         } catch (Exception e) {
             log.error("ES query tool call log error, traceId={}", traceId, e);

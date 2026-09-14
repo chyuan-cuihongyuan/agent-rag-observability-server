@@ -6,6 +6,7 @@ import cn.chyuan.ai.observability.infrastructure.dao.repository.MysqlLogReposito
 import cn.chyuan.ai.observability.infrastructure.es.attributes.OtelAttributeMapper;
 import cn.chyuan.ai.observability.infrastructure.es.bulk.EsBulkIndexService;
 import cn.chyuan.ai.observability.infrastructure.metrics.ObserveMetrics;
+import cn.chyuan.ai.observability.infrastructure.es.support.EsQueryTimer;
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
 import co.elastic.clients.elasticsearch.core.SearchResponse;
 import co.elastic.clients.elasticsearch.core.search.Hit;
@@ -28,6 +29,9 @@ public class EsMemoryRecallLogRepository implements IMemoryRecallLogRepository {
 
     @Resource
     private ElasticsearchClient esClient;
+
+    @Resource
+    private EsQueryTimer esQueryTimer;
 
     @Resource
     private EsBulkIndexService esBulkIndexService;
@@ -54,11 +58,11 @@ public class EsMemoryRecallLogRepository implements IMemoryRecallLogRepository {
     @Override
     public List<MemoryRecallLogEntity> queryByTraceId(String traceId) {
         try {
-            SearchResponse<MemoryRecallLogEntity> response = esClient.search(s -> s
+            SearchResponse<MemoryRecallLogEntity> response = esQueryTimer.timed("memory_recall_by_trace", () -> esClient.search(s -> s
                     .index(INDEX_PREFIX + "*")
                     .query(q -> q.term(t -> t.field("traceId").value(traceId)))
                     .size(100),
-                    MemoryRecallLogEntity.class);
+                    MemoryRecallLogEntity.class));
             return response.hits().hits().stream().map(Hit::source).collect(Collectors.toList());
         } catch (Exception e) {
             log.error("ES query memory recall log error, traceId={}", traceId, e);

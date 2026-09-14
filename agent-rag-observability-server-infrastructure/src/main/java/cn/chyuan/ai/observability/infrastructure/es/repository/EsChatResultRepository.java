@@ -2,6 +2,7 @@ package cn.chyuan.ai.observability.infrastructure.es.repository;
 
 import cn.chyuan.ai.observability.domain.observe.adapter.repository.IChatResultRepository;
 import cn.chyuan.ai.observability.domain.observe.model.entity.ChatResultEntity;
+import cn.chyuan.ai.observability.infrastructure.es.support.EsQueryTimer;
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
 import co.elastic.clients.elasticsearch.core.SearchResponse;
 import co.elastic.clients.elasticsearch.core.search.Hit;
@@ -25,6 +26,9 @@ public class EsChatResultRepository implements IChatResultRepository {
 
     @Resource
     private ElasticsearchClient esClient;
+
+    @Resource
+    private EsQueryTimer esQueryTimer;
 
     @Resource
     private MysqlLogRepository mysqlLogRepository;
@@ -53,10 +57,10 @@ public class EsChatResultRepository implements IChatResultRepository {
     @Override
     public ChatResultEntity queryByTraceId(String traceId) {
         try {
-            SearchResponse<ChatResultEntity> response = esClient.search(s -> s
+            SearchResponse<ChatResultEntity> response = esQueryTimer.timed("chat_result_by_trace", () -> esClient.search(s -> s
                     .index(INDEX_PREFIX + "*")
                     .query(q -> q.term(t -> t.field("traceId").value(traceId)))
-                    .size(1), ChatResultEntity.class);
+                    .size(1), ChatResultEntity.class));
             return response.hits().hits().isEmpty() ? null : response.hits().hits().get(0).source();
         } catch (Exception e) {
             log.error("ES query chat result error, traceId={}", traceId, e);
