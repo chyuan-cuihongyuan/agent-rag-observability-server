@@ -102,6 +102,34 @@ public class QueryController {
         return Response.success(observeQueryService.queryTraceList(condition, page, size));
     }
 
+    /**
+     * 游标分页查询 trace 列表（SELFLOOP3 loop-344，工单 0486/0487）：
+     * search_after 深分页；cursor=上一页 nextCursor（createTime|traceId），首页不传。
+     */
+    @PostMapping("/trace/list/cursor")
+    public Response<Map<String, Object>> queryTraceListCursor(@RequestBody TraceQueryDTO queryDTO) {
+        if (queryDTO == null) {
+            return Response.fail(ResponseCode.ILLEGAL_PARAMETER, "查询参数不能为空");
+        }
+        String validationError = validateTraceQuery(queryDTO);
+        if (validationError != null) {
+            return Response.fail(ResponseCode.ILLEGAL_PARAMETER, validationError);
+        }
+        Map<String, Object> condition = new HashMap<>();
+        if (queryDTO.getTenantId() != null) condition.put("tenantId", queryDTO.getTenantId());
+        if (queryDTO.getOwnerUserId() != null) condition.put("ownerUserId", queryDTO.getOwnerUserId());
+        if (queryDTO.getSessionId() != null) condition.put("sessionId", queryDTO.getSessionId());
+        if (queryDTO.getAgentId() != null) condition.put("agentId", queryDTO.getAgentId());
+        if (queryDTO.getBranchType() != null) condition.put("branchType", queryDTO.getBranchType());
+        if (queryDTO.getAgentStatus() != null) condition.put("agentStatus", queryDTO.getAgentStatus());
+        if (queryDTO.getSourceService() != null) condition.put("sourceService", queryDTO.getSourceService());
+        if (queryDTO.getStartTime() != null) condition.put("startTime", queryDTO.getStartTime());
+        if (queryDTO.getEndTime() != null) condition.put("endTime", queryDTO.getEndTime());
+
+        int size = queryDTO.getSize() != null ? Math.min(Math.max(queryDTO.getSize(), 1), 100) : 20;
+        return Response.success(observeQueryService.queryTraceListAfter(condition, size, queryDTO.getCursor()));
+    }
+
     @GetMapping("/session/{sessionId}")
     public Response<List<AgentDecisionEntity>> queryBySession(@PathVariable String sessionId,
                                                               @RequestParam(defaultValue = "1") int page,

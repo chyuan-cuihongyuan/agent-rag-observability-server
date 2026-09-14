@@ -21,4 +21,6 @@ public class TraceQueryDTO {
     private String endTime;
     private Integer page;
     private Integer size;
+    /** 游标分页游标（SELFLOOP3 loop-344）：上一页 nextCursor，首页不传 */
+    private String cursor;
 }

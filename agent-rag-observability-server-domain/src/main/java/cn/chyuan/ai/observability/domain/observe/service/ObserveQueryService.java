@@ -61,6 +61,31 @@ public class ObserveQueryService {
         return result;
     }
 
+    /**
+     * 游标分页（SELFLOOP3 loop-344，工单 0486/0487）：search_after 深分页（from+size 超 10000 即败）。
+     * cursor = 上一页最后一条 createTime|traceId；结果不足 size 时 nextCursor=null（终页）。
+     */
+    public Map<String, Object> queryTraceListAfter(Map<String, Object> condition, int size, String cursor) {
+        String afterCreateTime = null;
+        String afterTraceId = null;
+        if (cursor != null && cursor.contains("|")) {
+            String[] parts = cursor.split("\\|", 2);
+            afterCreateTime = parts[0];
+            afterTraceId = parts[1];
+        }
+        List<AgentDecisionEntity> list = agentDecisionRepository.queryByConditionAfter(condition, size, afterCreateTime, afterTraceId);
+        Map<String, Object> result = new HashMap<>();
+        result.put("list", list);
+        result.put("size", size);
+        if (list.size() >= size) {
+            AgentDecisionEntity last = list.get(list.size() - 1);
+            result.put("nextCursor", last.getCreateTime() + "|" + last.getTraceId());
+        } else {
+            result.put("nextCursor", null);
+        }
+        return result;
+    }
+
     public List<AgentDecisionEntity> queryBySessionId(String sessionId, int page, int size) {
         return agentDecisionRepository.queryBySessionId(sessionId, page, size);
     }

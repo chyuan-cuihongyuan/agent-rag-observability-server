@@ -88,20 +88,24 @@ public class EsAgentDecisionRepository implements IAgentDecisionRepository {
         return queryByCondition(cond, page, size);
     }
 
+    /** 条件子句构建（page 分页与 search_after 游标分页共用，loop-344 抽取） */
+    private List<Query> buildMust(Map<String, Object> condition) {
+        List<Query> must = new ArrayList<>();
+        if (condition.containsKey("traceId")) must.add(Query.of(q -> q.term(t -> t.field("traceId").value(condition.get("traceId").toString()))));
+        if (condition.containsKey("sessionId")) must.add(Query.of(q -> q.term(t -> t.field("sessionId").value(condition.get("sessionId").toString()))));
+        if (condition.containsKey("tenantId")) must.add(Query.of(q -> q.term(t -> t.field("tenantId").value(condition.get("tenantId").toString()))));
+        if (condition.containsKey("ownerUserId")) must.add(Query.of(q -> q.term(t -> t.field("ownerUserId").value(condition.get("ownerUserId").toString()))));
+        if (condition.containsKey("agentId")) must.add(Query.of(q -> q.term(t -> t.field("agentId").value(condition.get("agentId").toString()))));
+        if (condition.containsKey("branchType")) must.add(Query.of(q -> q.term(t -> t.field("branchType").value(condition.get("branchType").toString()))));
+        if (condition.containsKey("agentStatus")) must.add(Query.of(q -> q.term(t -> t.field("agentStatus").value(condition.get("agentStatus").toString()))));
+        if (condition.containsKey("sourceService")) must.add(Query.of(q -> q.term(t -> t.field("sourceService").value(condition.get("sourceService").toString()))));
+        return must;
+    }
+
     @Override
     public List<AgentDecisionEntity> queryByCondition(Map<String, Object> condition, int page, int size) {
         try {
-            List<Query> must = new ArrayList<>();
-            if (condition.containsKey("traceId")) must.add(Query.of(q -> q.term(t -> t.field("traceId").value(condition.get("traceId").toString()))));
-            if (condition.containsKey("sessionId")) must.add(Query.of(q -> q.term(t -> t.field("sessionId").value(condition.get("sessionId").toString()))));
-            if (condition.containsKey("tenantId")) must.add(Query.of(q -> q.term(t -> t.field("tenantId").value(condition.get("tenantId").toString()))));
-            if (condition.containsKey("ownerUserId")) must.add(Query.of(q -> q.term(t -> t.field("ownerUserId").value(condition.get("ownerUserId").toString()))));
-            if (condition.containsKey("agentId")) must.add(Query.of(q -> q.term(t -> t.field("agentId").value(condition.get("agentId").toString()))));
-            if (condition.containsKey("branchType")) must.add(Query.of(q -> q.term(t -> t.field("branchType").value(condition.get("branchType").toString()))));
-            if (condition.containsKey("agentStatus")) must.add(Query.of(q -> q.term(t -> t.field("agentStatus").value(condition.get("agentStatus").toString()))));
-            if (condition.containsKey("sourceService")) must.add(Query.of(q -> q.term(t -> t.field("sourceService").value(condition.get("sourceService").toString()))));
-
-            final List<Query> mustQueries = must;
+            final List<Query> mustQueries = buildMust(condition);
             SearchResponse<AgentDecisionEntity> response = esClient.search(s -> s
                     .index(INDEX_PREFIX + "*")
                     .query(q -> q.bool(b -> b.must(mustQueries)))
@@ -269,6 +273,31 @@ public class EsAgentDecisionRepository implements IAgentDecisionRepository {
         } catch (Exception e) {
             log.error("ES stat error ranking error", e);
             return Collections.emptyList();
+        }
+    }
+
+    @Override
+    public List<AgentDecisionEntity> queryByConditionAfter(Map<String, Object> condition, int size,
+                                                            String afterCreateTime, String afterTraceId) {
+        try {
+            final List<Query> mustQueries = buildMust(condition);
+            final String afterTime = afterCreateTime;
+            final String afterId = afterTraceId;
+            SearchResponse<AgentDecisionEntity> response = esClient.search(s -> s
+                    .index(INDEX_PREFIX + "*")
+                    .query(q -> q.bool(b -> b.must(mustQueries)))
+                    .size(size)
+                    .sort(so -> so.field(f -> f.field("createTime").order(co.elastic.clients.elasticsearch._types.SortOrder.Desc)))
+                    .sort(so -> so.field(f -> f.field("traceId").order(co.elastic.clients.elasticsearch._types.SortOrder.Desc)))
+                    .searchAfter(afterTime != null && afterId != null
+                            ? List.of(co.elastic.clients.elasticsearch._types.FieldValue.of(afterTime),
+                                      co.elastic.clients.elasticsearch._types.FieldValue.of(afterId))
+                            : null),
+                    AgentDecisionEntity.class);
+            return response.hits().hits().stream().map(h -> h.source()).filter(Objects::nonNull).toList();
+        } catch (Exception e) {
+            log.error("ES 游标分页查询 agent decision 失败", e);
+            return List.of();
         }
     }
 }
