@@ -106,13 +106,13 @@ public class EsAgentDecisionRepository implements IAgentDecisionRepository {
     public List<AgentDecisionEntity> queryByCondition(Map<String, Object> condition, int page, int size) {
         try {
             final List<Query> mustQueries = buildMust(condition);
-            SearchResponse<AgentDecisionEntity> response = esClient.search(s -> s
+            SearchResponse<AgentDecisionEntity> response = esQueryTimer.timed("agent_decision_queryByCondition", () -> esClient.search(s -> s
                     .index(INDEX_PREFIX + "*")
                     .query(q -> q.bool(b -> b.must(mustQueries)))
                     .from((page - 1) * size)
                     .size(size)
                     .sort(so -> so.field(f -> f.field("createTime").order(co.elastic.clients.elasticsearch._types.SortOrder.Desc))),
-                    AgentDecisionEntity.class);
+                    AgentDecisionEntity.class));
             return response.hits().hits().stream().map(Hit::source).collect(Collectors.toList());
         } catch (Exception e) {
             log.error("ES query agent decision by condition error", e);
@@ -138,7 +138,7 @@ public class EsAgentDecisionRepository implements IAgentDecisionRepository {
                 })));
             }
             final List<Query> mustQueries = must;
-            SearchResponse<Void> response = esClient.search(s -> s.index(INDEX_PREFIX + "*").query(q -> q.bool(b -> b.must(mustQueries))).size(0), Void.class);
+            SearchResponse<Void> response = esQueryTimer.timed("agent_decision_countByCondition", () -> esClient.search(s -> s.index(INDEX_PREFIX + "*").query(q -> q.bool(b -> b.must(mustQueries))).size(0), Void.class));
             return response.hits().total().value();
         } catch (Exception e) {
             log.error("ES count agent decision error", e);
@@ -149,12 +149,12 @@ public class EsAgentDecisionRepository implements IAgentDecisionRepository {
     @Override
     public List<Map<String, Object>> statByBranchType(String startTime, String endTime) {
         try {
-            SearchResponse<Void> response = esClient.search(s -> s
+            SearchResponse<Void> response = esQueryTimer.timed("agent_decision_statByBranchType", () -> esClient.search(s -> s
                     .index(INDEX_PREFIX + "*")
                     .size(0)
                     .query(q -> q.range(r -> r.field("createTime").gte(co.elastic.clients.json.JsonData.of(startTime)).lte(co.elastic.clients.json.JsonData.of(endTime))))
                     .aggregations("by_branch", a -> a.terms(t -> t.field("branchType").size(10))),
-                    Void.class);
+                    Void.class));
             List<Map<String, Object>> result = new ArrayList<>();
             response.aggregations().get("by_branch").sterms().buckets().array().forEach(b ->
                     result.add(Map.of("branch_type", b.key().stringValue(), "count", b.docCount())));
@@ -173,14 +173,14 @@ public class EsAgentDecisionRepository implements IAgentDecisionRepository {
         try {
             // selectedToolList 是 object 类型，无法直接 ES terms 聚合
             // 从 ES 查询记录的 selectedToolList 字段，应用层解析计数
-            SearchResponse<Map> response = esClient.search(s -> s
+            SearchResponse<Map> response = esQueryTimer.timed("agent_decision_statByToolUsage", () -> esClient.search(s -> s
                     .index(INDEX_PREFIX + "*")
                     .size(MAX_AGGREGATION_SIZE)
                     .source(src -> src.filter(f -> f.includes("selectedToolList")))
                     .query(q -> q.range(r -> r.field("createTime")
                             .gte(co.elastic.clients.json.JsonData.of(startTime))
                             .lte(co.elastic.clients.json.JsonData.of(endTime)))),
-                    Map.class);
+                    Map.class));
 
             // 应用层解析 selectedToolList JSON 字符串，计数工具使用频率
             Map<String, Long> toolCountMap = new HashMap<>();
@@ -233,7 +233,7 @@ public class EsAgentDecisionRepository implements IAgentDecisionRepository {
     public List<Map<String, Object>> statErrorRanking(String startTime, String endTime) {
         try {
             // 查询失败状态的记录，获取错误消息和 Agent ID
-            SearchResponse<Map> response = esClient.search(s -> s
+            SearchResponse<Map> response = esQueryTimer.timed("agent_decision_statErrorRanking", () -> esClient.search(s -> s
                     .index(INDEX_PREFIX + "*")
                     .size(MAX_AGGREGATION_SIZE)
                     .source(src -> src.filter(f -> f.includes("errorMessage", "agentId")))
@@ -243,7 +243,7 @@ public class EsAgentDecisionRepository implements IAgentDecisionRepository {
                                     .lte(co.elastic.clients.json.JsonData.of(endTime))))
                             .must(m -> m.term(t -> t.field("agentStatus").value("FAIL")))))
                     .sort(so -> so.field(f -> f.field("createTime").order(co.elastic.clients.elasticsearch._types.SortOrder.Desc))),
-                    Map.class);
+                    Map.class));
 
             // 应用层按错误消息分组计数
             Map<String, Map<String, Object>> errorMap = new LinkedHashMap<>();
@@ -283,7 +283,7 @@ public class EsAgentDecisionRepository implements IAgentDecisionRepository {
             final List<Query> mustQueries = buildMust(condition);
             final String afterTime = afterCreateTime;
             final String afterId = afterTraceId;
-            SearchResponse<AgentDecisionEntity> response = esClient.search(s -> s
+            SearchResponse<AgentDecisionEntity> response = esQueryTimer.timed("agent_decision_queryByConditionAfter", () -> esClient.search(s -> s
                     .index(INDEX_PREFIX + "*")
                     .query(q -> q.bool(b -> b.must(mustQueries)))
                     .size(size)
@@ -293,7 +293,7 @@ public class EsAgentDecisionRepository implements IAgentDecisionRepository {
                             ? List.of(co.elastic.clients.elasticsearch._types.FieldValue.of(afterTime),
                                       co.elastic.clients.elasticsearch._types.FieldValue.of(afterId))
                             : null),
-                    AgentDecisionEntity.class);
+                    AgentDecisionEntity.class));
             return response.hits().hits().stream().map(h -> h.source()).filter(Objects::nonNull).toList();
         } catch (Exception e) {
             log.error("ES 游标分页查询 agent decision 失败", e);

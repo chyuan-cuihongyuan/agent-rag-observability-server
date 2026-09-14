@@ -71,11 +71,11 @@ public class EsChatResultRepository implements IChatResultRepository {
     @Override
     public List<ChatResultEntity> queryByQuestion(String queryText, int limit) {
         try {
-            SearchResponse<ChatResultEntity> response = esClient.search(s -> s
+            SearchResponse<ChatResultEntity> response = esQueryTimer.timed("chat_result_queryByQuestion", () -> esClient.search(s -> s
                     .index(INDEX_PREFIX + "*")
                     .query(q -> q.match(m -> m.field("question").query(queryText)))
                     .sort(sort -> sort.field(f -> f.field("createTime").order(SortOrder.Desc)))
-                    .size(limit), ChatResultEntity.class);
+                    .size(limit), ChatResultEntity.class));
             return response.hits().hits().stream()
                     .map(Hit::source)
                     .toList();
@@ -88,7 +88,7 @@ public class EsChatResultRepository implements IChatResultRepository {
     @Override
     public List<Map<String, Object>> statTrend(String startTime, String endTime, String interval) {
         try {
-            SearchResponse<Void> response = esClient.search(s -> s
+            SearchResponse<Void> response = esQueryTimer.timed("chat_result_statTrend", () -> esClient.search(s -> s
                     .index(INDEX_PREFIX + "*")
                     .size(0)
                     .query(q -> q.range(r -> r.field("createTime").gte(co.elastic.clients.json.JsonData.of(startTime)).lte(co.elastic.clients.json.JsonData.of(endTime))))
@@ -99,7 +99,7 @@ public class EsChatResultRepository implements IChatResultRepository {
                             .aggregations("avg_cost", sa -> sa.avg(av -> av.field("totalCostTimeMs")))
                             // 子聚合：失败数量
                             .aggregations("fail_filter", sa -> sa.filter(f -> f.term(t -> t.field("finalStatus").value("FAIL"))))),
-                    Void.class);
+                    Void.class));
             List<Map<String, Object>> result = new ArrayList<>();
             response.aggregations().get("trend").dateHistogram().buckets().array().forEach(b -> {
                 // 提取子聚合结果
@@ -140,12 +140,12 @@ public class EsChatResultRepository implements IChatResultRepository {
     @Override
     public double avgCostTime(String startTime, String endTime) {
         try {
-            SearchResponse<Void> response = esClient.search(s -> s
+            SearchResponse<Void> response = esQueryTimer.timed("chat_result_avgCostTime", () -> esClient.search(s -> s
                     .index(INDEX_PREFIX + "*")
                     .size(0)
                     .query(q -> q.range(r -> r.field("createTime").gte(co.elastic.clients.json.JsonData.of(startTime)).lte(co.elastic.clients.json.JsonData.of(endTime))))
                     .aggregations("avg_cost", a -> a.avg(av -> av.field("totalCostTimeMs"))),
-                    Void.class);
+                    Void.class));
             return response.aggregations().get("avg_cost").avg().value();
         } catch (Exception e) {
             log.error("ES avg cost time error", e);
@@ -156,11 +156,11 @@ public class EsChatResultRepository implements IChatResultRepository {
     @Override
     public long countByStatus(String status, String startTime, String endTime) {
         try {
-            SearchResponse<Void> response = esClient.search(s -> s
+            SearchResponse<Void> response = esQueryTimer.timed("chat_result_countByStatus", () -> esClient.search(s -> s
                     .index(INDEX_PREFIX + "*")
                     .size(0)
                     .query(q -> q.bool(b -> b.must(m -> m.range(r -> r.field("createTime").gte(co.elastic.clients.json.JsonData.of(startTime)).lte(co.elastic.clients.json.JsonData.of(endTime)))).must(m -> m.term(t -> t.field("finalStatus").value(status))))),
-                    Void.class);
+                    Void.class));
             return response.hits().total().value();
         } catch (Exception e) {
             log.error("ES count by status error", e);

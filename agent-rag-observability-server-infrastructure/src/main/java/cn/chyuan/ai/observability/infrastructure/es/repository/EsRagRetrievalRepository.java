@@ -73,12 +73,12 @@ public class EsRagRetrievalRepository implements IRagRetrievalRepository {
     @Override
     public List<Map<String, Object>> statEmptyRetrievalRate(String startTime, String endTime) {
         try {
-            SearchResponse<Void> response = esClient.search(s -> s
+            SearchResponse<Void> response = esQueryTimer.timed("rag_retrieval_statEmptyRetrievalRate", () -> esClient.search(s -> s
                     .index(INDEX_PREFIX + "*")
                     .size(0)
                     .query(q -> q.range(r -> r.field("createTime").gte(co.elastic.clients.json.JsonData.of(startTime)).lte(co.elastic.clients.json.JsonData.of(endTime))))
                     .aggregations("by_empty", a -> a.terms(t -> t.field("emptyRetrieval").size(2))),
-                    Void.class);
+                    Void.class));
             List<Map<String, Object>> result = new ArrayList<>();
             // emptyRetrieval 字段为 integer 类型，使用 lterms() 获取 LongTerms 聚合结果
             response.aggregations().get("by_empty").lterms().buckets().array().forEach(b ->
@@ -93,12 +93,12 @@ public class EsRagRetrievalRepository implements IRagRetrievalRepository {
     @Override
     public double avgRetrievalCount(String startTime, String endTime) {
         try {
-            SearchResponse<Void> response = esClient.search(s -> s
+            SearchResponse<Void> response = esQueryTimer.timed("rag_retrieval_avgRetrievalCount", () -> esClient.search(s -> s
                     .index(INDEX_PREFIX + "*")
                     .size(0)
                     .query(q -> q.range(r -> r.field("createTime").gte(co.elastic.clients.json.JsonData.of(startTime)).lte(co.elastic.clients.json.JsonData.of(endTime))))
                     .aggregations("avg_count", a -> a.avg(av -> av.field("retrievalCount"))),
-                    Void.class);
+                    Void.class));
             return response.aggregations().get("avg_count").avg().value();
         } catch (Exception e) {
             log.error("ES avg retrieval count error", e);
