@@ -7,6 +7,7 @@ import cn.chyuan.ai.observability.domain.evaluate.model.entity.EvalDatasetEntity
 import cn.chyuan.ai.observability.domain.evaluate.model.entity.EvalResultEntity;
 import cn.chyuan.ai.observability.domain.evaluate.model.entity.EvalTaskEntity;
 import jakarta.annotation.Resource;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
@@ -17,6 +18,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+@Slf4j
 @Service
 public class EvaluateService {
 
@@ -28,6 +30,9 @@ public class EvaluateService {
 
     @Resource
     private EvalExecutionService evalExecutionService;
+
+    @Resource
+    private EvalConcurrencyGuard evalConcurrencyGuard;
 
     public EvaluateService(IEvalTaskRepository evalTaskRepository,
                            IEvalResultRepository evalResultRepository,
@@ -96,7 +101,7 @@ public class EvaluateService {
 
     /**
      * 异步执行评测任务 — 提交到 observeExecutor 线程池执行 EvalExecutionService。
-     * 立即返回，让前端轮询进度。
+     * 立即返回，让前端轮询进度。并发闸门饱和时立即拒绝（FAILED），不放行不排队。
      */
     @Async("observeExecutor")
     public void runTask(String taskId) {
@@ -104,11 +109,18 @@ public class EvaluateService {
         if (task == null) {
             return;
         }
-        evalTaskRepository.updateStatus(taskId, "RUNNING");
+        if (!evalConcurrencyGuard.tryAcquire()) {
+            log.warn("评测并发已满，任务直接拒绝: taskId={}", taskId);
+            evalTaskRepository.updateStatus(taskId, "FAILED");
+            return;
+        }
         try {
+            evalTaskRepository.updateStatus(taskId, "RUNNING");
             evalExecutionService.execute(task);
         } catch (Exception e) {
             evalTaskRepository.updateStatus(taskId, "FAILED");
+        } finally {
+            evalConcurrencyGuard.release();
         }
     }
 
