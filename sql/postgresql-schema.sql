@@ -814,3 +814,19 @@ CREATE TABLE IF NOT EXISTS notification (
 );
 COMMENT ON TABLE notification IS '通知中心（AL1：PENDING/SENT/FAILED/SUPPRESSED/DIGESTED/DEDUPED；INBOX 渠道落库）';
 CREATE INDEX IF NOT EXISTS idx_notification_subscriber ON notification (subscriber, status);
+
+-- 32. 提示优化实验表（工单 0329 AO7：签名/数据集指纹 + 候选与得分曲线快照）
+CREATE TABLE IF NOT EXISTS prompt_optimization_experiment (
+    id                    VARCHAR(64)  PRIMARY KEY,
+    name                  VARCHAR(128) NOT NULL,
+    signature_fingerprint VARCHAR(64),
+    dataset_fingerprint   VARCHAR(64),
+    candidates_json       TEXT,
+    score_curve_json      TEXT,
+    winner                TEXT,
+    status                VARCHAR(16)  NOT NULL DEFAULT 'RUNNING',
+    created_at_ms         BIGINT       NOT NULL,
+    update_time           TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+COMMENT ON TABLE prompt_optimization_experiment IS '提示优化实验（AO7：RUNNING/DONE/FAILED；候选快照与得分曲线 JSON 留痕）';
+CREATE INDEX IF NOT EXISTS idx_optim_experiment_created ON prompt_optimization_experiment (created_at_ms);

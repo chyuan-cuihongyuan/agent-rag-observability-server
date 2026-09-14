@@ -604,3 +604,18 @@ CREATE TABLE IF NOT EXISTS notification (
   update_time DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   KEY idx_notification_subscriber (subscriber, status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='通知中心（工单 0293 AL1）';
+
+-- 32. 提示优化实验表（工单 0329 AO7：签名/数据集指纹 + 候选与得分曲线快照）
+CREATE TABLE IF NOT EXISTS prompt_optimization_experiment (
+  id                    VARCHAR(64)  PRIMARY KEY COMMENT '实验ID',
+  name                  VARCHAR(128) NOT NULL COMMENT '实验名称',
+  signature_fingerprint VARCHAR(64)  NULL COMMENT '签名指纹',
+  dataset_fingerprint   VARCHAR(64)  NULL COMMENT '数据集指纹',
+  candidates_json       TEXT         NULL COMMENT '候选快照 JSON',
+  score_curve_json      TEXT         NULL COMMENT '得分曲线 JSON',
+  winner                TEXT         NULL COMMENT '胜出提示',
+  status                VARCHAR(16)  NOT NULL DEFAULT 'RUNNING' COMMENT 'RUNNING/DONE/FAILED',
+  created_at_ms         BIGINT       NOT NULL COMMENT '创建时间毫秒',
+  update_time           DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  KEY idx_optim_experiment_created (created_at_ms)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='提示优化实验（工单 0329 AO7）';
