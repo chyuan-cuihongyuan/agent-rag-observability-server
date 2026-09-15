@@ -136,6 +136,18 @@ public class EsBulkIndexService {
 
     @PreDestroy
     public void shutdown() {
+        // 停机兜底：单次 flush 只消化一批（maxSize），队列高频残余需循环排空，
+        // 否则随 daemon 线程丢失（loop-650）
+        if (queue != null) {
+            int rounds = 0;
+            while (!queue.isEmpty() && rounds < 100) {
+                flushSafely();
+                rounds++;
+            }
+            if (!queue.isEmpty()) {
+                log.warn("ES bulk shutdown 后仍有残余未刷写: size={}", queue.size());
+            }
+        }
         flushSafely();
         if (scheduler != null) {
             scheduler.shutdown();
