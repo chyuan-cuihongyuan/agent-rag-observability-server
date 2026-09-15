@@ -5,6 +5,7 @@ import cn.chyuan.ai.observability.domain.observe.service.DataSeedService;
 import cn.chyuan.ai.observability.types.response.Response;
 import cn.chyuan.ai.observability.types.response.ResponseCode;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
@@ -16,6 +17,9 @@ import java.util.Map;
  */
 @Slf4j
 @RestController
+// 生产安全（loop-647）：seed 接口默认关闭，演示环境显式开启（observability.seed.enabled=true），
+// 落实类注释「生产环境应通过配置关闭」的既有承诺
+@ConditionalOnProperty(prefix = "observability.seed", name = "enabled", havingValue = "true", matchIfMissing = false)
 @CrossOrigin(origins = {"http://localhost:3001", "http://localhost:3000"})
 @RequestMapping("/api/v1/seed")
 public class DataSeedController {
