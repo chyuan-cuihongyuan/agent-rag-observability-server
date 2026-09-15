@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.*;
 
 @Slf4j
 @RestController
-@CrossOrigin(origins = {"http://localhost:3001", "http://localhost:3000"})
+@CrossOrigin(origins = {"${cors.allowed-origins:http://localhost:3001,http://localhost:3000}"})  // loop-651：外置（对齐 mcp 惯例），生产经 nginx 同源代理不受影响
 @RequestMapping("/api/v1/collect")
 public class CollectController {
 
