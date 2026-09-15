@@ -41,6 +41,12 @@ public class LlmJudgeConfig {
     @Value("${spring.ai.openai.chat.options.temperature:0.3}")
     private double temperature;
 
+    // judge 重试显式化（SELFLOOP4 loop-413，工单 0624/0625）：spring-ai 2.0.1 底层为
+    // OpenAI 官方 SDK（OkHttp），重试由 maxRetries 承担（SDK 默认 2，408/429/5xx 指数退避）。
+    // 显式 3 次 + 单次 180s 超时 => 最坏 4×180s ≈ 12 分钟，并发 2（O01 闸门）下可控
+    @Value("${observability.eval.judge.retry.max-attempts:3}")
+    private int retryMaxAttempts;
+
     @Bean
     @ConditionalOnProperty(name = "observability.eval.judge.enabled", havingValue = "true")
     public ChatModel chatModel() {
@@ -49,6 +55,8 @@ public class LlmJudgeConfig {
                 .baseUrl(baseUrl)
                 .apiKey(apiKey)
                 .timeout(Duration.ofSeconds(180))
+                .maxRetries(cn.chyuan.ai.observability.infrastructure.adapter.llm.JudgeRetrySupport
+                        .clampMaxRetries(retryMaxAttempts))
                 .build();
         return OpenAiChatModel.builder()
                 .openAiClient(openAIClient)
