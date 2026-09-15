@@ -8,6 +8,7 @@ import cn.chyuan.ai.observability.domain.evaluate.model.entity.EvalResultEntity;
 import cn.chyuan.ai.observability.domain.evaluate.model.entity.EvalTaskEntity;
 import cn.chyuan.ai.observability.domain.evaluate.service.EvaluateService;
 import cn.chyuan.ai.observability.domain.evaluate.service.EvalCsvExporter;
+import cn.chyuan.ai.observability.domain.evaluate.service.EvalMarkdownExporter;
 import cn.chyuan.ai.observability.types.response.Response;
 import cn.chyuan.ai.observability.types.response.ResponseCode;
 import cn.chyuan.ai.observability.trigger.http.support.RequestValidator;
@@ -27,10 +28,13 @@ public class EvaluateController {
 
     private final EvaluateService evaluateService;
     private final EvalCsvExporter evalCsvExporter;
+    private final EvalMarkdownExporter evalMarkdownExporter;
 
-    public EvaluateController(EvaluateService evaluateService, EvalCsvExporter evalCsvExporter) {
+    public EvaluateController(EvaluateService evaluateService, EvalCsvExporter evalCsvExporter,
+                              EvalMarkdownExporter evalMarkdownExporter) {
         this.evaluateService = evaluateService;
         this.evalCsvExporter = evalCsvExporter;
+        this.evalMarkdownExporter = evalMarkdownExporter;
     }
 
     @PostMapping("/dataset")
@@ -187,6 +191,24 @@ public class EvaluateController {
                 .header("Content-Disposition", "attachment; filename=eval_" + taskId + ".csv")
                 .contentType(org.springframework.http.MediaType.parseMediaType("text/csv;charset=UTF-8"))
                 .body(body);
+    }
+
+    /**
+     * 评测结果 Markdown 导出 — 人读场景（评审/归档，SELFLOOP6 loop-617，工单 0830/0831）。
+     * 与 CSV 端点同构：同校验、同 maxRows 语义；GFM 表格（loop-432 导出器）。
+     */
+    @GetMapping("/task/{taskId}/export.md")
+    public ResponseEntity<byte[]> exportTaskMarkdown(@PathVariable String taskId,
+                                                     @RequestParam(defaultValue = "500") int maxRows) {
+        String validationError = RequestValidator.validateId("taskId", taskId);
+        if (validationError != null) {
+            return ResponseEntity.badRequest().body(validationError.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        }
+        String markdown = evalMarkdownExporter.export(taskId, maxRows);
+        return ResponseEntity.ok()
+                .header("Content-Disposition", "attachment; filename=eval_" + taskId + ".md")
+                .contentType(org.springframework.http.MediaType.parseMediaType("text/markdown;charset=UTF-8"))
+                .body(markdown.getBytes(java.nio.charset.StandardCharsets.UTF_8));
     }
 
     /**
