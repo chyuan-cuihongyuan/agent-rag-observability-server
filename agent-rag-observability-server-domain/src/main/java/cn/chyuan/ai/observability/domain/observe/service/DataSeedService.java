@@ -113,6 +113,9 @@ public class DataSeedService {
      * @return 生成的 trace 总数
      */
     public int seedData(int days, int countPerDay) {
+        // 参数钳位（loop-703）：防超大参数生成海量数据拖垮 ES（days≤90、countPerDay≤200、总量≤5000）
+        days = Math.max(1, Math.min(days, 90));
+        countPerDay = Math.max(1, Math.min(countPerDay, 200));
         int totalTraces = 0;
         LocalDateTime now = LocalDateTime.now();
 
