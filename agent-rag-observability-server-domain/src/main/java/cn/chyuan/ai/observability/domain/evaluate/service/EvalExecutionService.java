@@ -378,6 +378,14 @@ public class EvalExecutionService {
     private record AgentDecisionMetrics(double intentScore, double branchScore, double reasoningScore, double overallScore) {}
 
     private void flush(List<EvalResultEntity> buffer, String taskId, int completed, double sumOverall) {
+        // 分值域观测门禁（loop-425/O43）：越界 warn 留痕不阻断落库（verdict 缺席时 null 是常态）
+        for (EvalResultEntity result : buffer) {
+            List<String> violations = EvalResultValidator.violations(result);
+            if (!violations.isEmpty()) {
+                log.warn("评测结果分值域违规, taskId={}, traceId={}, {}",
+                        taskId, result.getTraceId(), violations);
+            }
+        }
         evalResultRepository.batchSave(new ArrayList<>(buffer));
         double runningAvg = completed == 0 ? 0.0 : sumOverall / completed;
         evalTaskRepository.updateProgress(taskId, completed, round(runningAvg));
