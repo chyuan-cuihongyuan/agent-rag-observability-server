@@ -1,6 +1,7 @@
 package cn.chyuan.ai.observability.domain.observe.service;
 
 import cn.chyuan.ai.observability.domain.observe.adapter.cache.ICachePort;
+import cn.chyuan.ai.observability.domain.observe.adapter.metrics.IMetricsPort;
 import cn.chyuan.ai.observability.domain.observe.adapter.repository.*;
 import cn.chyuan.ai.observability.domain.observe.model.entity.*;
 import org.springframework.stereotype.Service;
@@ -19,19 +20,22 @@ public class ObserveCollectService {
     private final IToolCallLogRepository toolCallLogRepository;
     private final IMemoryRecallLogRepository memoryRecallLogRepository;
     private final ICachePort cachePort;
+    private final IMetricsPort metricsPort;
 
     public ObserveCollectService(IAgentDecisionRepository agentDecisionRepository,
                                   IRagRetrievalRepository ragRetrievalRepository,
                                   IChatResultRepository chatResultRepository,
                                   IToolCallLogRepository toolCallLogRepository,
                                   IMemoryRecallLogRepository memoryRecallLogRepository,
-                                  ICachePort cachePort) {
+                                  ICachePort cachePort,
+                                  IMetricsPort metricsPort) {
         this.agentDecisionRepository = agentDecisionRepository;
         this.ragRetrievalRepository = ragRetrievalRepository;
         this.chatResultRepository = chatResultRepository;
         this.toolCallLogRepository = toolCallLogRepository;
         this.memoryRecallLogRepository = memoryRecallLogRepository;
         this.cachePort = cachePort;
+        this.metricsPort = metricsPort;
     }
 
     public void collectAgentDecision(AgentDecisionEntity entity) {
@@ -56,6 +60,11 @@ public class ObserveCollectService {
         }
         chatResultRepository.save(entity);
         cachePort.increment("chat_result");
+        // token 用量指标化（Q1，OTel GenAI 命名对齐）：仅在上报了 token 时记录；
+        // metricsPort 缺席时 no-op（对齐 SessionManagementService 防御模式）
+        if (metricsPort != null) {
+            metricsPort.recordTokenUsage(entity.getPromptTokens(), entity.getCompletionTokens());
+        }
     }
 
     public void collectToolCallLog(ToolCallLogEntity entity) {
