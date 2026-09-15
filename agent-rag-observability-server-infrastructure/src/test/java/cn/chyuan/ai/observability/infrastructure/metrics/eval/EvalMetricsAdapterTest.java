@@ -76,4 +76,15 @@ class EvalMetricsAdapterTest {
         assertEquals(1, registry.get("eval_task_duration_ms").tag("eval_type", "unknown").timer().count());
         assertEquals(null, registry.find("eval_task_finished").tag("eval_type", "").counter());
     }
+
+    @Test
+    @DisplayName("O46：duration Timer 带 description + 客户端分位（_p50/_p95 可渲染）")
+    void taskDuration_publishesPercentiles() {
+        adapter.recordTaskDuration("retrieval", 1200);
+
+        io.micrometer.core.instrument.Timer timer = registry.get("eval_task_duration_ms")
+                .tag("eval_type", "retrieval").timer();
+        org.junit.jupiter.api.Assertions.assertNotNull(timer.getId().getDescription(), "description 缺失");
+        assertEquals(2, timer.takeSnapshot().percentileValues().length, "分位缺失（期望 p50+p95）");
+    }
 }

@@ -76,6 +76,7 @@ public class EvalExecutionService {
                 log.warn("评测任务无可执行条目, taskId={}, datasetId={}", taskId, task.getDatasetId());
                 evalTaskRepository.updateStatus(taskId, "FAILED");
                 evalMetricsPort.recordTaskFinished(task.getEvalType(), "FAILED");
+                evalMetricsPort.recordTaskDuration(task.getEvalType(), timer.elapsedMillis());
                 return;
             }
 
@@ -118,6 +119,8 @@ public class EvalExecutionService {
             try {
                 evalTaskRepository.updateStatus(taskId, "FAILED");
                 evalMetricsPort.recordTaskFinished(task.getEvalType(), "FAILED");
+                // 失败耗时同样计时（O46）：失败拖多久是诊断卡死/上游超时的关键信号
+                evalMetricsPort.recordTaskDuration(task.getEvalType(), timer.elapsedMillis());
             } catch (Exception ignored) {
                 // 置失败本身异常忽略
             }

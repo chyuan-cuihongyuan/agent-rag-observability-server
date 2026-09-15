@@ -5,6 +5,7 @@ import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.DistributionSummary;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Tags;
+import io.micrometer.core.instrument.Timer;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -33,8 +34,13 @@ public class EvalMetricsAdapter implements IEvalMetricsPort {
 
     @Override
     public void recordTaskDuration(String evalType, long durationMs) {
-        registry.timer("eval_task_duration_ms",
-                "eval_type", nullToDefault(evalType))
+        // builder 式 + 客户端分位（O46）：直接渲染 _p50/_p95，Simple/Prometheus 双端可读。
+        // 评测任务每任务一记录，量级低，客户端聚合开销可忽略。
+        Timer.builder("eval_task_duration_ms")
+                .description("评测任务端到端耗时（含 COMPLETED/FAILED/空数据集全路径）")
+                .tags(Tags.of("eval_type", nullToDefault(evalType)))
+                .publishPercentiles(0.5, 0.95)
+                .register(registry)
                 .record(java.time.Duration.ofMillis(durationMs));
     }
 
