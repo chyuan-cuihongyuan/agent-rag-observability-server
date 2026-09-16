@@ -619,3 +619,21 @@ CREATE TABLE IF NOT EXISTS prompt_optimization_experiment (
   update_time           DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   KEY idx_optim_experiment_created (created_at_ms)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='提示优化实验（工单 0329 AO7）';
+
+-- 33. 异常事件表（工单 0412 AX8：检测器异常全生命周期 OPEN→RESOLVED）
+CREATE TABLE IF NOT EXISTS anomaly_event (
+  id             BIGINT AUTO_INCREMENT PRIMARY KEY,
+  event_id       VARCHAR(64)  NOT NULL COMMENT '事件ID（唯一）',
+  detector       VARCHAR(64)  NOT NULL COMMENT '检测器（EWMA/CUSUM/SPIKE_DIP/LOF）',
+  metric_name    VARCHAR(128) NOT NULL COMMENT '指标名',
+  side           VARCHAR(8)   NOT NULL COMMENT '侧别 UP/DOWN',
+  score          DOUBLE       NOT NULL DEFAULT 0 COMMENT '异常得分',
+  status         VARCHAR(16)  NOT NULL DEFAULT 'OPEN' COMMENT 'OPEN/RESOLVED',
+  triggered_at   BIGINT       NOT NULL COMMENT '触发时间 epoch ms',
+  resolved_at    BIGINT       NULL COMMENT '恢复时间 epoch ms',
+  context_json   TEXT         NULL COMMENT '上下文 JSON（控制限/变化点等）',
+  create_time    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  update_time    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_anomaly_event_id (event_id),
+  KEY idx_anomaly_event_metric (metric_name, status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='异常事件（工单 0412 AX8）';

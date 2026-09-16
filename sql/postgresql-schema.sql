@@ -830,3 +830,23 @@ CREATE TABLE IF NOT EXISTS prompt_optimization_experiment (
 );
 COMMENT ON TABLE prompt_optimization_experiment IS '提示优化实验（AO7：RUNNING/DONE/FAILED；候选快照与得分曲线 JSON 留痕）';
 CREATE INDEX IF NOT EXISTS idx_optim_experiment_created ON prompt_optimization_experiment (created_at_ms);
+
+-- 33. 异常事件表（工单 0412 AX8：检测器异常全生命周期 OPEN→RESOLVED）
+CREATE TABLE IF NOT EXISTS anomaly_event (
+    id             BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    event_id       VARCHAR(64)  NOT NULL,
+    detector       VARCHAR(64)  NOT NULL,
+    metric_name    VARCHAR(128) NOT NULL,
+    side           VARCHAR(8)   NOT NULL,
+    score          DOUBLE PRECISION NOT NULL DEFAULT 0,
+    status         VARCHAR(16)  NOT NULL DEFAULT 'OPEN',
+    triggered_at   BIGINT       NOT NULL,
+    resolved_at    BIGINT,
+    context_json   TEXT,
+    create_time    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    update_time    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uk_anomaly_event_id UNIQUE (event_id)
+);
+COMMENT ON TABLE anomaly_event IS '异常事件（AX8：OPEN→RESOLVED 全生命周期，连续 N 点回归带内判定恢复）';
+COMMENT ON COLUMN anomaly_event.update_time IS '更新时间（应用层维护）';
+CREATE INDEX IF NOT EXISTS idx_anomaly_event_metric ON anomaly_event (metric_name, status);
