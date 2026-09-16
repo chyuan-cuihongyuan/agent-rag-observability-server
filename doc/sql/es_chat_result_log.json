@@ -1,0 +1,28 @@
+{
+  "index_patterns": ["chat_result_log*"],
+  "template": {
+    "settings": {
+      "number_of_shards": 3,
+      "number_of_replicas": 1,
+      "refresh_interval": "5s"
+    },
+    "mappings": {
+      "properties": {
+        "traceId": {"type": "keyword"},
+        "sourceService": {"type": "keyword"},
+        "tenantId": {"type": "keyword"},
+        "ownerUserId": {"type": "keyword"},
+        "sessionId": {"type": "keyword"},
+        "agentId": {"type": "keyword"},
+        "question": {"type": "text", "analyzer": "ik_max_word"},
+        "answer": {"type": "text", "analyzer": "ik_max_word"},
+        "promptTokens": {"type": "integer"},
+        "completionTokens": {"type": "integer"},
+        "totalCostTimeMs": {"type": "integer"},
+        "finalStatus": {"type": "keyword"},
+        "modelVersion": {"type": "keyword"},
+        "createTime": {"type": "date", "format": "yyyy-MM-dd HH:mm:ss"}
+      }
+    }
+  }
+}

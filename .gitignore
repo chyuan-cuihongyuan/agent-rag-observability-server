@@ -9,7 +9,8 @@
 *.log
 
 ### 文档清理：不提交到 GitHub ###
-doc/
+doc/*	# SELFLOOP5 loop-519：同上，开 sql 白名单
+!doc/sql/
 docs/
 claude.md
 CLAUDE.md

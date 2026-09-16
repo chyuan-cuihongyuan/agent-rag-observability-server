@@ -1,0 +1,21 @@
+CREATE TABLE IF NOT EXISTS `chat_result_log` (
+  `id`                bigint unsigned NOT NULL AUTO_INCREMENT,
+  `trace_id`          varchar(64)     NOT NULL COMMENT '请求追踪ID',
+  `source_service`    varchar(64)     NOT NULL DEFAULT 'agent' COMMENT '来源服务',
+  `tenant_id`         varchar(64)     NOT NULL DEFAULT '' COMMENT '租户ID',
+  `owner_user_id`     varchar(64)     NOT NULL DEFAULT '' COMMENT '归属用户ID',
+  `session_id`        varchar(128)    NOT NULL DEFAULT '' COMMENT '会话ID',
+  `agent_id`          varchar(64)     NOT NULL DEFAULT '' COMMENT '智能体ID',
+  `question`          text            NOT NULL COMMENT '用户提问',
+  `answer`            longtext        NOT NULL COMMENT '智能体回答',
+  `prompt_tokens`     int             NOT NULL DEFAULT 0 COMMENT '提示词Token数',
+  `completion_tokens` int             NOT NULL DEFAULT 0 COMMENT '回答Token数',
+  `total_cost_time_ms` int            NOT NULL DEFAULT 0 COMMENT '总耗时(ms)',
+  `final_status`      varchar(32)     NOT NULL DEFAULT '' COMMENT '状态',
+  `model_version`     varchar(64)     NOT NULL DEFAULT '' COMMENT '模型版本',
+  `create_time`       datetime        NOT NULL COMMENT '创建时间',
+  PRIMARY KEY (`id`),
+  KEY `idx_trace_id` (`trace_id`),
+  KEY `idx_session_id` (`session_id`),
+  KEY `idx_create_time` (`create_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='问答结果日志';
