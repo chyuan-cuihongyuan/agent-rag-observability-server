@@ -637,3 +637,16 @@ CREATE TABLE IF NOT EXISTS anomaly_event (
   UNIQUE KEY uk_anomaly_event_id (event_id),
   KEY idx_anomaly_event_metric (metric_name, status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='异常事件（工单 0412 AX8）';
+
+-- 34. 时序样本表（工单 0486 BF7：tskernel 样本批次登记）
+CREATE TABLE IF NOT EXISTS ts_sample (
+  id             BIGINT AUTO_INCREMENT PRIMARY KEY,
+  series_id      BIGINT       NOT NULL COMMENT '序列 id（LabelIndex 稳定分配）',
+  timestamp_ms   BIGINT       NOT NULL COMMENT '时间戳 epoch ms',
+  value          DOUBLE       NOT NULL COMMENT '样本值',
+  batch_id       VARCHAR(64)  NOT NULL COMMENT '写入批次',
+  create_time    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  update_time    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_ts_sample (batch_id, series_id, timestamp_ms),
+  KEY idx_ts_sample_series (series_id, timestamp_ms)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='时序样本（工单 0486 BF7）';

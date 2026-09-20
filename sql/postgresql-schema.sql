@@ -850,3 +850,18 @@ CREATE TABLE IF NOT EXISTS anomaly_event (
 COMMENT ON TABLE anomaly_event IS '异常事件（AX8：OPEN→RESOLVED 全生命周期，连续 N 点回归带内判定恢复）';
 COMMENT ON COLUMN anomaly_event.update_time IS '更新时间（应用层维护）';
 CREATE INDEX IF NOT EXISTS idx_anomaly_event_metric ON anomaly_event (metric_name, status);
+
+-- 34. 时序样本表（工单 0486 BF7：tskernel 样本批次登记）
+CREATE TABLE IF NOT EXISTS ts_sample (
+    id           BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    series_id    BIGINT      NOT NULL,
+    timestamp_ms BIGINT      NOT NULL,
+    value        DOUBLE PRECISION NOT NULL,
+    batch_id     VARCHAR(64) NOT NULL,
+    create_time  TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    update_time  TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uk_ts_sample UNIQUE (batch_id, series_id, timestamp_ms)
+);
+COMMENT ON TABLE ts_sample IS '时序样本（BF7：序列+时间戳+批次幂等）';
+COMMENT ON COLUMN ts_sample.update_time IS '更新时间（应用层维护）';
+CREATE INDEX IF NOT EXISTS idx_ts_sample_series ON ts_sample (series_id, timestamp_ms);
