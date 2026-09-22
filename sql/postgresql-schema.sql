@@ -865,3 +865,21 @@ CREATE TABLE IF NOT EXISTS ts_sample (
 COMMENT ON TABLE ts_sample IS '时序样本（BF7：序列+时间戳+批次幂等）';
 COMMENT ON COLUMN ts_sample.update_time IS '更新时间（应用层维护）';
 CREATE INDEX IF NOT EXISTS idx_ts_sample_series ON ts_sample (series_id, timestamp_ms);
+
+-- 35. 日志流表（工单 0579 BQ7：logkernel 日志流登记）
+CREATE TABLE IF NOT EXISTS log_stream (
+    id           BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    fingerprint  BIGINT       NOT NULL,
+    stream_key   VARCHAR(512) NOT NULL,
+    line_count   BIGINT       NOT NULL DEFAULT 0,
+    byte_count   BIGINT       NOT NULL DEFAULT 0,
+    first_ts     BIGINT       NOT NULL,
+    last_ts      BIGINT       NOT NULL,
+    status       VARCHAR(16)  NOT NULL DEFAULT 'ACTIVE',
+    create_time  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    update_time  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uk_log_stream_fingerprint UNIQUE (fingerprint)
+);
+COMMENT ON TABLE log_stream IS '日志流（BQ7：流指纹唯一键+行数字节数+首末时间戳）';
+COMMENT ON COLUMN log_stream.update_time IS '更新时间（应用层维护）';
+CREATE INDEX IF NOT EXISTS idx_log_stream_status ON log_stream (status, last_ts);

@@ -650,3 +650,19 @@ CREATE TABLE IF NOT EXISTS ts_sample (
   UNIQUE KEY uk_ts_sample (batch_id, series_id, timestamp_ms),
   KEY idx_ts_sample_series (series_id, timestamp_ms)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='时序样本（工单 0486 BF7）';
+
+-- 35. 日志流表（工单 0579 BQ7：logkernel 日志流登记）
+CREATE TABLE IF NOT EXISTS log_stream (
+  id             BIGINT AUTO_INCREMENT PRIMARY KEY,
+  fingerprint    BIGINT       NOT NULL COMMENT '流指纹（FNV-1a 64 稳定分配）',
+  stream_key     VARCHAR(512) NOT NULL COMMENT '流键（标签字典序 k=v 串）',
+  line_count     BIGINT       NOT NULL DEFAULT 0 COMMENT '行数',
+  byte_count     BIGINT       NOT NULL DEFAULT 0 COMMENT '字节数',
+  first_ts       BIGINT       NOT NULL COMMENT '首行时间戳 epoch ms',
+  last_ts        BIGINT       NOT NULL COMMENT '末行时间戳 epoch ms',
+  status         VARCHAR(16)  NOT NULL DEFAULT 'ACTIVE' COMMENT 'ACTIVE/DELETED',
+  create_time    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  update_time    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_log_stream_fingerprint (fingerprint),
+  KEY idx_log_stream_status (status, last_ts)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='日志流（工单 0579 BQ7）';
