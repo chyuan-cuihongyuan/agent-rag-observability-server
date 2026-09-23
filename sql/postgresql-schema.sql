@@ -883,3 +883,22 @@ CREATE TABLE IF NOT EXISTS log_stream (
 COMMENT ON TABLE log_stream IS '日志流（BQ7：流指纹唯一键+行数字节数+首末时间戳）';
 COMMENT ON COLUMN log_stream.update_time IS '更新时间（应用层维护）';
 CREATE INDEX IF NOT EXISTS idx_log_stream_status ON log_stream (status, last_ts);
+
+-- 36. 错误组表（工单 0701 CE7：errorkernel 错误聚合分组）
+CREATE TABLE IF NOT EXISTS error_group (
+    id             BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    group_key      VARCHAR(32)  NOT NULL,
+    fingerprint    VARCHAR(512) NOT NULL,
+    title          VARCHAR(512) NOT NULL,
+    event_count    BIGINT       NOT NULL DEFAULT 0,
+    first_seen     BIGINT       NOT NULL,
+    last_seen      BIGINT       NOT NULL,
+    status         VARCHAR(16)  NOT NULL DEFAULT 'UNRESOLVED',
+    sample_at      BIGINT       NOT NULL,
+    create_time    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    update_time    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+COMMENT ON TABLE error_group IS '错误组（CE7：指纹分组+计数+首见最近+状态）';
+COMMENT ON COLUMN error_group.update_time IS '更新时间（应用层维护）';
+CREATE UNIQUE INDEX IF NOT EXISTS uk_error_group_key ON error_group (group_key);
+CREATE INDEX IF NOT EXISTS idx_error_group_count ON error_group (status, event_count, last_seen);

@@ -666,3 +666,20 @@ CREATE TABLE IF NOT EXISTS log_stream (
   UNIQUE KEY uk_log_stream_fingerprint (fingerprint),
   KEY idx_log_stream_status (status, last_ts)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='日志流（工单 0579 BQ7）';
+
+-- 36. 错误组表（工单 0701 CE7：errorkernel 错误聚合分组）
+CREATE TABLE IF NOT EXISTS error_group (
+  id             BIGINT AUTO_INCREMENT PRIMARY KEY,
+  group_key      VARCHAR(32)  NOT NULL COMMENT '组键（指纹 FNV 十六进制）',
+  fingerprint    VARCHAR(512) NOT NULL COMMENT '指纹（类型+顶层帧+模板化消息）',
+  title          VARCHAR(512) NOT NULL COMMENT '组标题（首例事件摘要）',
+  event_count    BIGINT       NOT NULL DEFAULT 0 COMMENT '事件计数',
+  first_seen     BIGINT       NOT NULL COMMENT '首见时间 epoch ms',
+  last_seen      BIGINT       NOT NULL COMMENT '最近时间 epoch ms',
+  status         VARCHAR(16)  NOT NULL DEFAULT 'UNRESOLVED' COMMENT 'UNRESOLVED/RESOLVED',
+  sample_at      BIGINT       NOT NULL COMMENT '样本时间 epoch ms',
+  create_time    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  update_time    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_error_group_key (group_key),
+  KEY idx_error_group_count (status, event_count, last_seen)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='错误组（工单 0701 CE7）';
