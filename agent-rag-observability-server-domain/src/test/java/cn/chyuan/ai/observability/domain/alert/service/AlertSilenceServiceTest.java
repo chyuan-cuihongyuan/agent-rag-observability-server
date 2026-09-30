@@ -51,8 +51,12 @@ class AlertSilenceServiceTest {
     @Test
     @DisplayName("isSilenced — 任一规则命中即静默")
     public void testIsSilenced() {
+        // 静默窗动态取当前时刻前后各一小时——原硬编码 2026-09 窗在窗口过期后必然失败（时间炸弹）
+        java.time.format.DateTimeFormatter fmt = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+        String startsAt = java.time.LocalDateTime.now().minusHours(1).format(fmt);
+        String endsAt = java.time.LocalDateTime.now().plusHours(1).format(fmt);
         when(alertSilenceRepository.queryAll()).thenReturn(List.of(
-                rule("slo.*", "2026-09-01 00:00:00", "2026-09-30 23:59:59")
+                rule("slo.*", startsAt, endsAt)
         ));
 
         assertTrue(service.isSilenced("slo.burn_rate"));
